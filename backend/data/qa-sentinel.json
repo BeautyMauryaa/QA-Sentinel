@@ -1,0 +1,107 @@
+{
+  "runs": {},
+  "results": {
+    "LS-u_gfJ4Wx0NTSaIDCZX": [
+      {
+        "id": "KU1Puu9U1LrXED5JnboXY",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_006",
+        "test_name": "Header Visible",
+        "status": "pass",
+        "error_message": null,
+        "screenshot_path": null
+      },
+      {
+        "id": "V6xCNP02c5Z3hPoQSAQNd",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_007",
+        "test_name": "Navigation Menu Visible",
+        "status": "fail",
+        "error_message": "No <nav>/[role=navigation] found",
+        "screenshot_path": null
+      },
+      {
+        "id": "q9oyRjF3U0FT8ABflROVc",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_008",
+        "test_name": "Logo Visible",
+        "status": "pass",
+        "error_message": null,
+        "screenshot_path": null
+      },
+      {
+        "id": "sUXCSkblHNTmrLp6vVLZ6",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_009",
+        "test_name": "Logo Redirects Homepage",
+        "status": "pass",
+        "error_message": null,
+        "screenshot_path": null
+      },
+      {
+        "id": "qhzAFAhQtphaJmKD3uWqW",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_010",
+        "test_name": "All Navigation Links Clickable",
+        "status": "pass",
+        "error_message": null,
+        "screenshot_path": null
+      },
+      {
+        "id": "A1JYFUbbV2HLP_LgMmg48",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_011",
+        "test_name": "No Navigation Link Returns 404",
+        "status": "fail",
+        "error_message": "# (404), https://digimantra-wordpress.devserver.in/artificial-intelligence-machine-learning/ (404), https://digimantra-wordpress.devserver.in/meta-intelligent-and-generative-ai/ (404), https://digimantra-wordpress.devserver.in/blockchain/ (404), https://digimantra-wordpress.devserver.in/iot-connected-systems/ (404), https://digimantra-wordpress.devserver.in/cybersecurity-compliance-services/ (404), https://digimantra-wordpress.devserver.in/ai-native-product-engineering-services/ (404)",
+        "screenshot_path": null
+      },
+      {
+        "id": "7V7sOBeeKs3_mrB9ohtqJ",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_012",
+        "test_name": "Browser Back Works",
+        "status": "pass",
+        "error_message": null,
+        "screenshot_path": null
+      },
+      {
+        "id": "fU7zNc0ryHiCe1yhKXUfV",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_013",
+        "test_name": "Browser Forward Works",
+        "status": "pass",
+        "error_message": null,
+        "screenshot_path": null
+      },
+      {
+        "id": "coGsSb80bLr8RrzpQajY3",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_014",
+        "test_name": "Current Page Highlighted",
+        "status": "fail",
+        "error_message": "No aria-current/active indicator found (heuristic)",
+        "screenshot_path": null
+      },
+      {
+        "id": "7414nmjwhE3xt9fGJsGIV",
+        "run_id": "LS-u_gfJ4Wx0NTSaIDCZX",
+        "suite_id": "navigation",
+        "test_id": "TC_015",
+        "test_name": "Dropdown Menus Open Correctly",
+        "status": "skipped",
+        "error_message": "No dropdown menus detected",
+        "screenshot_path": null
+      }
+    ]
+  }
+}
