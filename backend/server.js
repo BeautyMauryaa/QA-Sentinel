@@ -10,11 +10,11 @@ import db from "./db.js";
 import { executeRun, SCREENSHOT_DIR } from "./runner.js";
 import { compareRuns } from "./compare.js";
 import { SUITES } from "./suiteRegistry.js";
-import {
-  extractDocxBlocks,
-  extractUrlBlocks,
-  compareBlocks,
-} from "./contentMatchEngine.js";
+
+// Import your custom extraction utils and your fixed match engine module
+import { parseAndCleanDocument } from "./utils/docParser.js";
+import { extractUrlBlocks, evaluateContentMatch } from "./engines/contentMatchEngine.js";
+import mammoth from "mammoth";
 
 import {
   captureScreenshots,
@@ -25,36 +25,43 @@ import {
   runVisualComparison,
   BASELINE_DIR,
   DIFF_DIR,
-} from "./visualRegression.js"
-
+} from "./visualRegression.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use("/screenshots", express.static(SCREENSHOT_DIR)); // already exists
-app.use("/baselines",   express.static(BASELINE_DIR));   // ← add
-app.use("/diffs",       express.static(DIFF_DIR));       // ← add
-
+app.use("/screenshots", express.static(SCREENSHOT_DIR)); 
+app.use("/baselines",   express.static(BASELINE_DIR));   
+app.use("/diffs",       express.static(DIFF_DIR));       
 
 const PORT = process.env.PORT || 4000;
 
-// Multer for .docx uploads (memory storage — no disk write needed)
+// Multer for .docx uploads (Memory Storage with Safe Error Callback)
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
   fileFilter(req, file, cb) {
-    if (
-      file.mimetype ===
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.originalname.endsWith(".docx")
-    ) {
+    const isDocxExt = file.originalname.toLowerCase().endsWith(".docx");
+    const isDocxMime = 
+      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype === "application/octet-stream"; // Safe fallback for OS environment variance
+
+    if (isDocxExt || isDocxMime) {
       cb(null, true);
     } else {
-      cb(new Error("Only .docx files are accepted."));
+      cb(new MulterError("LIMIT_UNEXPECTED_FILE", "Only .docx files are accepted."), false);
     }
   },
 });
+
+// Custom error wrapper to safely handle validation messages
+class MulterError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
 
 async function checkAuthentication(url, auth) {
   let browser;
@@ -89,7 +96,15 @@ app.get("/api/suites", (req, res) => {
 
 // --- Run tests ----------------------------------------------------------------
 
-app.post("/api/tests/run", upload.single("document"), async (req, res) => {
+const handleTestRunUpload = upload.single("document");
+app.post("/api/tests/run", (req, res, next) => {
+  handleTestRunUpload(req, res, function (err) {
+    if (err) {
+      return res.status(400).json({ error: err.message || "File upload validation failed." });
+    }
+    next();
+  });
+}, async (req, res) => {
   const url = req.body.url;
   const suites = JSON.parse(req.body.suites || "[]");
   const auth = {
@@ -106,8 +121,7 @@ app.post("/api/tests/run", upload.single("document"), async (req, res) => {
     normalizedUrl = new URL(url).toString();
   } catch {
     return res.status(400).json({
-      error:
-        "Field 'url' must be a valid absolute URL, e.g. https://example.com",
+      error: "Field 'url' must be a valid absolute URL, e.g. https://example.com",
     });
   }
 
@@ -127,8 +141,7 @@ app.post("/api/tests/run", upload.single("document"), async (req, res) => {
 
   if (authCheck.requiresAuth && (!auth?.username || !auth?.password)) {
     return res.status(401).json({
-      error:
-        "This website requires authentication. Please enter username and password.",
+      error: "This website requires authentication. Please enter username and password.",
     });
   }
 
@@ -154,7 +167,6 @@ app.post("/api/tests/run", upload.single("document"), async (req, res) => {
 });
 
 // --- Regression comparison ----------------------------------------------------
-// MUST be before /api/tests/:id to avoid "compare" matching :id
 
 app.get("/api/tests/compare", (req, res) => {
   const { run1, run2 } = req.query;
@@ -196,7 +208,15 @@ app.delete("/api/history/:id", (req, res) => {
 
 // --- Content Match Engine -----------------------------------------------------
 
-app.post("/api/content-match", upload.single("docx"), async (req, res) => {
+const handleContentMatchUpload = upload.single("docx");
+app.post("/api/content-match", (req, res, next) => {
+  handleContentMatchUpload(req, res, function (err) {
+    if (err) {
+      return res.status(400).json({ error: err.message || "File upload validation failed." });
+    }
+    next();
+  });
+}, async (req, res) => {
   if (!req.file) {
     return res
       .status(400)
@@ -213,26 +233,31 @@ app.post("/api/content-match", upload.single("docx"), async (req, res) => {
     normalizedUrl = new URL(url).toString();
   } catch {
     return res.status(400).json({
-      error:
-        "Field 'url' must be a valid absolute URL, e.g. https://example.com",
+      error: "Field 'url' must be a valid absolute URL, e.g. https://example.com",
     });
   }
 
   try {
-    const auth =
-      username && password ? { username, password } : undefined;
+    const auth = username && password ? { username, password } : undefined;
 
-    const [docxBlocks, urlBlocks] = await Promise.all([
-      extractDocxBlocks(req.file.buffer),
-      extractUrlBlocks(normalizedUrl, auth),
-    ]);
+    // Extract text from the raw Word Document buffer via mammoth
+    const docxExtractionResult = await mammoth.extractRawText({ buffer: req.file.buffer });
+    const rawLines = docxExtractionResult.value.split("\n");
 
-    const report = compareBlocks(docxBlocks, urlBlocks);
+    // Process raw lines through our strict cleaning engine pipeline
+    const cleanStructuredSections = parseAndCleanDocument(rawLines);
+
+    // Fetch clean text items extracted from Playwright layout DOM selectors
+    const webBlocks = await extractUrlBlocks(normalizedUrl, auth);
+    const liveWebsiteContentArray = webBlocks.map(block => block.text);
+
+    // Evaluate content arrays into our structured QA Comparison Report object
+    const reportData = evaluateContentMatch(cleanStructuredSections, liveWebsiteContentArray);
 
     res.json({
       url: normalizedUrl,
       filename: req.file.originalname,
-      ...report,
+      reportData // Sends clean sections to frontend ContentMatchPanel
     });
   } catch (err) {
     console.error("Content match error:", err);
@@ -296,6 +321,7 @@ app.post("/api/visual/compare", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`QA Sentinel backend listening on http://localhost:${PORT}`);
+// Explicit IPv4 interface listener to prevent IPv6 binding issues (ECONNREFUSED) with Vite proxy configurations
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);
 });

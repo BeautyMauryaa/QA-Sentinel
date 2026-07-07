@@ -3,7 +3,8 @@ import RunPanel from "./components/RunPanel.jsx";
 import ResultsDashboard from "./components/ResultsDashboard.jsx";
 import HistoryPanel from "./components/HistoryPanel.jsx";
 import CompareView from "./components/CompareView.jsx";
-import ContentMatchPanel from "./components/Contentmatchpanel.jsx";
+import OldContentMatchPanel from "./panels/ContentMatchPanel"; 
+import ContentMatchPanel from "./components/ContentMatchPanel";
 import VisualRegressionPanel from "./components/VisualRegressionPanel.jsx";
 const TABS = [
   { id: "run",     label: "Run"               },
