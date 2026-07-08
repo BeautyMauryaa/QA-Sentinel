@@ -3,7 +3,14 @@
  */
 import { chromium } from "playwright";
 import calculateStringSimilarity from "similarity";
-
+function extractWords(str) {
+  return (str || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ") // Replace punctuation with spaces
+    .replace(/\s+/g, " ") // Clean up double spaces
+    .trim()
+    .split(" ");
+}
 function normalize(text) {
   // If text is not a string, convert to empty string to avoid crashes
   const str = (typeof text === 'string') ? text : (text?.text || ""); 
@@ -74,15 +81,7 @@ export async function extractUrlBlocks(url, auth) {
   }
 }
 
-// Add this helper function at the top of your file to safely extract words
-function extractWords(str) {
-  return (str || "")
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ") // Replace punctuation with spaces
-    .replace(/\s+/g, " ") // Clean up double spaces
-    .trim()
-    .split(" ");
-}
+
 
 export function evaluateContentMatch(sections, liveWebsiteContentArray) {
   const report = [];

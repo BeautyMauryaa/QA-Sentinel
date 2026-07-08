@@ -1,4 +1,3 @@
-
 export function parseAndCleanDocument(rawLines) {
   // Always return an array to prevent "is not iterable" errors
   if (!rawLines || !Array.isArray(rawLines)) {
@@ -15,8 +14,11 @@ export function parseAndCleanDocument(rawLines) {
     // Skip empty lines or structural separators
     if (!line || line.includes("____")) continue;
 
-    // 1. Detect Fold Headings
-    if (line.toLowerCase().includes("fold")) {
+    // 1. Detect Fold Headings OR Numbered Section Headings
+    // (Preserves original 'fold' logic, adds '1. NAME' support)
+    const isSectionHeading = line.toLowerCase().includes("fold") || /^\d+\.\s+[A-Z\s]+$/.test(line);
+    
+    if (isSectionHeading) {
       currentSection = {
         heading: line.toUpperCase(),
         items: [],
@@ -25,30 +27,13 @@ export function parseAndCleanDocument(rawLines) {
       continue;
     }
 
-    // Default container if text exists before a Fold
+    // Default container if text exists before a Section/Fold
     if (!currentSection) {
       currentSection = { heading: "GENERAL CONTENT", items: [] };
       sections.push(currentSection);
     }
 
-    // 2. Grouping Logic: Combine Heading/Subheading + Description
-    // We combine the current line with the next line if it looks like a description
-    let combinedContent = line;
-    let contentType = "Paragraph";
-
-    // Look ahead for a descriptive paragraph
-    if (i + 1 < rawLines.length) {
-      let nextLine = rawLines[i + 1].trim();
-      // Logic: If next line is not a fold/CTA and is long, it's the description
-      if (
-        !nextLine.toLowerCase().includes("fold") &&
-        !nextLine.toLowerCase().includes("cta") &&
-        nextLine.length > 20
-      ) {
-        combinedContent = `${line}\n\n${nextLine}`;
-        i++; // Skip the next line as it's now part of this combined block
-      }
-    }
+    // 2. Logic: Handle TechList
     if (line.endsWith(":")) {
       currentSection.items.push({
         type: "TechList",
@@ -57,25 +42,43 @@ export function parseAndCleanDocument(rawLines) {
       });
       continue;
     }
-    // If it's a technology name, add to the last TechList
+    
+    // If it's a technology name, add to the last TechList (Preserving original logic)
     if (currentSection && currentSection.items.length > 0) {
       const lastItem = currentSection.items[currentSection.items.length - 1];
-      if (lastItem.type === "TechList") {
+      if (lastItem.type === "TechList" && !line.toLowerCase().includes("cta")) {
         lastItem.expected.push(line);
         continue;
       }
     }
 
-    // Handle Buttons / FAQs
+    // 3. Handle Buttons / FAQs
+    let contentType = "Paragraph";
+    let combinedContent = line;
+
     if (line.toLowerCase().includes("cta")) {
       contentType = "Button/CTA";
       combinedContent = line.split(/:|:/)[1]?.trim() || line;
     } else if (line.match(/^\d+\.\s/)) {
       contentType = "FAQ Item";
       combinedContent = line.replace(/^\d+\.\s*/, "").trim();
+    } else {
+      // Look ahead for a descriptive paragraph (Preserving original look-ahead logic)
+      if (i + 1 < rawLines.length) {
+        let nextLine = rawLines[i + 1].trim();
+        if (
+          !nextLine.toLowerCase().includes("fold") &&
+          !nextLine.toLowerCase().includes("cta") &&
+          !/^\d+\.\s+[A-Z\s]+$/.test(nextLine) &&
+          nextLine.length > 20
+        ) {
+          combinedContent = `${line}\n\n${nextLine}`;
+          i++; 
+        }
+      }
     }
 
-    // 3. Final validation: Push only if valid
+    // 4. Final validation: Push only if valid
     if (combinedContent && combinedContent.length > 5) {
       currentSection.items.push({
         type: contentType,
