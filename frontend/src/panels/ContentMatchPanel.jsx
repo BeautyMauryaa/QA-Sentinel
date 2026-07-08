@@ -50,6 +50,23 @@ export default function ContentMatchPanel() {
     }
   };
 
+  // Inside ContentMatchPanel.jsx
+
+const downloadReport = () => {
+  if (!report) return; // 'report' is your state holding the reportData
+  
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `qa-content-report-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
   return (
     <div className="bg-black text-white p-6 font-sans min-h-screen">
       {/* Header Studio Section */}
@@ -168,6 +185,7 @@ export default function ContentMatchPanel() {
           )}
         </div>
       ))}
+      
     </div>
   );
 }

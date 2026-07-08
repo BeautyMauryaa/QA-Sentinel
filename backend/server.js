@@ -309,6 +309,21 @@ app.post("/api/visual/compare", async (req, res) => {
   }
 });
 
+// Add to your server.js
+app.get("/api/report/download", (req, res) => {
+  // Replace this with how you store your latest report in your backend
+  const reportData = global.latestReportData; 
+
+  if (!reportData) {
+    return res.status(404).json({ error: "No report data available to download." });
+  }
+
+  // Set headers to trigger a file download
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', 'attachment; filename="qa-report.json"');
+  res.send(JSON.stringify(reportData, null, 2));
+});
+
 // Explicit IPv4 interface listener to prevent IPv6 binding issues (ECONNREFUSED) with Vite proxy configurations
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);

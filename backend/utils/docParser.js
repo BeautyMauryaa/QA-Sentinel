@@ -1,7 +1,4 @@
-/**
- * utils/docParser.js
- * Final version: Robust grouping and defensive return types.
- */
+
 export function parseAndCleanDocument(rawLines) {
   // Always return an array to prevent "is not iterable" errors
   if (!rawLines || !Array.isArray(rawLines)) {

@@ -222,6 +222,8 @@ export default function ContentMatchPanel() {
 
       {/* Render Verified Report Tables */}
       {!loading && reportData && <MatchReport reportData={reportData} />}
+
+      
     </div>
   );
 }
