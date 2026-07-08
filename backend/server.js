@@ -309,6 +309,28 @@ app.post("/api/visual/compare", async (req, res) => {
   }
 });
 
+// Upload Figma export as the baseline
+app.post("/api/visual/set-baseline", upload.single("design"), (req, res) => {
+  const { url } = req.body;
+  const filePath = path.join(BASELINE_DIR, `${encodeURIComponent(url)}.png`);
+  fs.writeFileSync(filePath, req.file.buffer);
+  res.json({ success: true, message: "Figma baseline set." });
+});
+
+// Run comparison
+app.post("/api/visual/compare-ui", async (req, res) => {
+  const { url } = req.body;
+  const baselinePath = path.join(BASELINE_DIR, `${encodeURIComponent(url)}.png`);
+  
+  if (!fs.existsSync(baselinePath)) {
+    return res.status(404).json({ error: "Upload Figma design first." });
+  }
+  
+  const runId = nanoid();
+  const result = await compareWithFigmaBaseline(url, baselinePath, runId);
+  res.json(result);
+});
+
 // Add to your server.js
 app.get("/api/report/download", (req, res) => {
   // Replace this with how you store your latest report in your backend
@@ -328,6 +350,9 @@ app.get("/api/report/download", (req, res) => {
 // app.listen(PORT, "127.0.0.1", () => {
 //   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);
 // });
+
+
+
 app.listen(PORT, () => {
   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);
 });
