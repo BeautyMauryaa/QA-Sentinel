@@ -14,15 +14,15 @@ export function parseAndCleanDocument(rawLines) {
 
   for (let i = 0; i < rawLines.length; i++) {
     let line = rawLines[i].trim();
-    
+
     // Skip empty lines or structural separators
     if (!line || line.includes("____")) continue;
 
     // 1. Detect Fold Headings
     if (line.toLowerCase().includes("fold")) {
-      currentSection = { 
-        heading: line.toUpperCase(), 
-        items: [] 
+      currentSection = {
+        heading: line.toUpperCase(),
+        items: [],
       };
       sections.push(currentSection);
       continue;
@@ -43,11 +43,29 @@ export function parseAndCleanDocument(rawLines) {
     if (i + 1 < rawLines.length) {
       let nextLine = rawLines[i + 1].trim();
       // Logic: If next line is not a fold/CTA and is long, it's the description
-      if (!nextLine.toLowerCase().includes("fold") && 
-          !nextLine.toLowerCase().includes("cta") && 
-          nextLine.length > 20) {
+      if (
+        !nextLine.toLowerCase().includes("fold") &&
+        !nextLine.toLowerCase().includes("cta") &&
+        nextLine.length > 20
+      ) {
         combinedContent = `${line}\n\n${nextLine}`;
         i++; // Skip the next line as it's now part of this combined block
+      }
+    }
+    if (line.endsWith(":")) {
+      currentSection.items.push({
+        type: "TechList",
+        heading: line,
+        expected: [], // Collect subsequent lines here
+      });
+      continue;
+    }
+    // If it's a technology name, add to the last TechList
+    if (currentSection && currentSection.items.length > 0) {
+      const lastItem = currentSection.items[currentSection.items.length - 1];
+      if (lastItem.type === "TechList") {
+        lastItem.expected.push(line);
+        continue;
       }
     }
 
@@ -64,7 +82,7 @@ export function parseAndCleanDocument(rawLines) {
     if (combinedContent && combinedContent.length > 5) {
       currentSection.items.push({
         type: contentType,
-        expected: combinedContent
+        expected: combinedContent,
       });
     }
   }

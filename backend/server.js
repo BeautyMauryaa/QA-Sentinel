@@ -207,6 +207,7 @@ app.delete("/api/history/:id", (req, res) => {
 });
 
 // --- Content Match Engine -----------------------------------------------------
+// --- Content Match Engine -----------------------------------------------------
 
 const handleContentMatchUpload = upload.single("docx");
 app.post("/api/content-match", (req, res, next) => {
@@ -218,50 +219,37 @@ app.post("/api/content-match", (req, res, next) => {
   });
 }, async (req, res) => {
   if (!req.file) {
-    return res
-      .status(400)
-      .json({ error: "A .docx file is required (field name: 'docx')." });
+    return res.status(400).json({ error: "A .docx file is required." });
   }
 
   const { url, username, password } = req.body || {};
-  if (!url || typeof url !== "string") {
-    return res.status(400).json({ error: "Field 'url' is required." });
-  }
-
-  let normalizedUrl;
-  try {
-    normalizedUrl = new URL(url).toString();
-  } catch {
-    return res.status(400).json({
-      error: "Field 'url' must be a valid absolute URL, e.g. https://example.com",
-    });
-  }
+  if (!url) return res.status(400).json({ error: "Field 'url' is required." });
 
   try {
     const auth = username && password ? { username, password } : undefined;
 
-    // Extract text from the raw Word Document buffer via mammoth
+    // 1. Extract text from DOCX
     const docxExtractionResult = await mammoth.extractRawText({ buffer: req.file.buffer });
     const rawLines = docxExtractionResult.value.split("\n");
-
-    // Process raw lines through our strict cleaning engine pipeline
     const cleanStructuredSections = parseAndCleanDocument(rawLines);
 
-    // Fetch clean text items extracted from Playwright layout DOM selectors
-    const webBlocks = await extractUrlBlocks(normalizedUrl, auth);
-    const liveWebsiteContentArray = webBlocks.map(block => block.text);
+    // 2. Fetch DOM content (The Scraper)
+    const webBlocks = await extractUrlBlocks(url, auth);
+    
+    // DEBUG: Log the result to see if it's empty
+    console.log("DEBUG: Web Blocks length:", webBlocks?.length);
 
-    // Evaluate content arrays into our structured QA Comparison Report object
-    const reportData = evaluateContentMatch(cleanStructuredSections, liveWebsiteContentArray);
+    // 3. Evaluate and send report
+    const reportData = evaluateContentMatch(cleanStructuredSections, webBlocks);
 
     res.json({
-      url: normalizedUrl,
+      url: url,
       filename: req.file.originalname,
-      reportData // Sends clean sections to frontend ContentMatchPanel
+      reportData
     });
   } catch (err) {
     console.error("Content match error:", err);
-    res.status(500).json({ error: err.message || "Content match failed." });
+    res.status(500).json({ error: err.message });
   }
 });
 
