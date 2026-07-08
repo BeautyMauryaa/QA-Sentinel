@@ -39,23 +39,54 @@ export async function run(page, url, helpers) {
   // TC_001 Homepage Loads
   // --------------------------------------------------
 
-  const status = response?.status() ?? 0;  // ← derive status from captured response
+  // const status = response?.status() ?? 0;  // ← derive status from captured response
 
-  if (status === 401) {
+  // if (status === 401) {
+  //   results.push(
+  //     record(
+  //       "TC_000",
+  //       "Authentication Required",
+  //       "fail",
+  //       "Website requires credentials",
+  //       await screenshot(page, "TC_000")
+  //     )
+  //   );
+  //   return results;
+  // }
+
+  // results.push(record("TC_001", "Homepage Loads", "pass")); // ← TC_001 pass recorded
+
+
+  // --------------------------------------------------
+  // TC_001 Homepage Loads
+  // --------------------------------------------------
+  const status = response?.status() ?? 0;
+
+  // Catch all non-successful status codes (anything outside 200-299)
+  if (status < 200 || status >= 300) {
+    let errorMessage = `HTTP Error: ${status}`;
+    
+    // Specifically identify auth issues for better reporting
+    if (status === 401 || status === 403) {
+      errorMessage = "Authentication Required: Website requires credentials";
+    }
+
     results.push(
       record(
-        "TC_000",
-        "Authentication Required",
+        "TC_001",
+        "Homepage Loads",
         "fail",
-        "Website requires credentials",
-        await screenshot(page, "TC_000")
+        errorMessage,
+        await screenshot(page, "TC_001") // Capture error screenshot
       )
     );
-    return results;
+    return results; // Stop further testing as the page didn't load
   }
 
-  results.push(record("TC_001", "Homepage Loads", "pass")); // ← TC_001 pass recorded
+  // If we reach here, the status is 2xx, it's a genuine pass
+  results.push(record("TC_001", "Homepage Loads", "pass"));
 
+  
   // --------------------------------------------------
   // TC_002 No Console Errors
   // --------------------------------------------------

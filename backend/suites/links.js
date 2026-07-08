@@ -5,6 +5,10 @@ export const label = "Link Validation";
 export async function run(page, url, helpers) {
   const { record } = helpers;
   const results = [];
+  
+  // Wait for the page to be fully loaded to ensure all links are in the DOM
+  await page.waitForLoadState('networkidle');
+
   const base = new URL(url);
 
   const allLinks = await page.$$eval("a[href]", (els) => els.map((e) => e.getAttribute("href")).filter(Boolean));
@@ -19,10 +23,10 @@ export async function run(page, url, helpers) {
   });
   const external = unique.filter((h) => !internal.includes(h) && /^https?:\/\//.test(h));
 
-  // cap checks to keep runs fast
   const internalSample = internal.slice(0, 15);
   const externalSample = external.slice(0, 8);
 
+  // Validate Internal Links
   let internalBroken = [];
   for (const href of internalSample) {
     try {
@@ -39,6 +43,7 @@ export async function run(page, url, helpers) {
       : record("TC_021", "Internal Links Valid", "fail", internalBroken.join(", "))
   );
 
+  // Validate External Links
   let externalBroken = [];
   for (const href of externalSample) {
     try {
@@ -56,6 +61,7 @@ export async function run(page, url, helpers) {
       : record("TC_022", "External Links Valid", "fail", externalBroken.join(", "))
   );
 
+  // Check for Broken Links
   const totalBroken = internalBroken.length + externalBroken.length;
   results.push(
     totalBroken === 0
@@ -63,19 +69,10 @@ export async function run(page, url, helpers) {
       : record("TC_023", "No Broken Links", "fail", `${totalBroken} broken link(s) found`)
   );
 
-  // Redirect loop check: follow up to 5 redirects on the page itself
-  try {
-  await page.request.get(url, { maxRedirects: 0 });
-  redirectLoop = false; // no redirect at all
-} catch (err) {
-  // maxRedirects: 0 throws on any redirect
-  redirectLoop = false; // single redirect is normal, not a loop
-}
-// True loop detection requires inspecting a chain of 5+ redirects — 
-// simplest fix is to just mark TC_024 as skipped since it can't be reliably detected
-results.push(record("TC_024", "No Redirect Loops", "skipped", "Redirect loop detection not reliably verifiable generically"));
-  //results.push(record("TC_024", "No Redirect Loops", redirectLoop ? "fail" : "pass", redirectLoop ? "Redirect loop suspected" : undefined));
+  // Redirect loop check - safely handled without global scope issues
+  results.push(record("TC_024", "No Redirect Loops", "skipped", "Redirect loop detection not reliably verifiable generically"));
 
+  // Check for target="_blank"
   const targetBlankLinks = await page.$$eval("a[target='_blank']", (els) => els.length);
   results.push(
     targetBlankLinks === 0

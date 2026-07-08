@@ -325,6 +325,9 @@ app.get("/api/report/download", (req, res) => {
 });
 
 // Explicit IPv4 interface listener to prevent IPv6 binding issues (ECONNREFUSED) with Vite proxy configurations
-app.listen(PORT, "127.0.0.1", () => {
+// app.listen(PORT, "127.0.0.1", () => {
+//   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);
+// });
+app.listen(PORT, () => {
   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);
 });

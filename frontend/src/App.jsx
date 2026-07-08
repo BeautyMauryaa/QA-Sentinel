@@ -5,10 +5,10 @@ import HistoryPanel from "./components/HistoryPanel.jsx";
 import CompareView from "./components/CompareView.jsx";
 import OldContentMatchPanel from "./panels/ContentMatchPanel"; 
 import ContentMatchPanel from "./components/ContentMatchPanel";
-import VisualRegressionPanel from "./components/VisualRegressionPanel.jsx";
+//import VisualRegressionPanel from "./components/VisualRegressionPanel.jsx";
 const TABS = [
   { id: "run",     label: "Run"               },
-  { id: "visual",  label: "Visual Regression" },  // ← add
+  // { id: "visual",  label: "Visual Regression" },  // ← add
   { id: "content", label: "Content Match"     },
   { id: "history", label: "History"           },
 ];
@@ -54,7 +54,7 @@ export default function App() {
                 key={t.id}
                 onClick={() => {
   setTab(t.id);
-  if (t.id === "history" || t.id === "content" || t.id === "visual") {
+  if (t.id === "history" || t.id === "content" ) {
     setActiveRunId(null);
     setCompareIds(null);
   }
@@ -95,7 +95,7 @@ export default function App() {
           <HistoryPanel onView={handleViewRun} onCompare={handleCompare} />
         )}
         {tab === "content" && <ContentMatchPanel />} {/* ← add this line */}
-        {tab === "visual"  && <VisualRegressionPanel />}
+        {/* {tab === "visual"  && <VisualRegressionPanel />} */}
       </main>
     </div>
   );
