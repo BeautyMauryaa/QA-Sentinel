@@ -66,122 +66,64 @@ export async function extractUrlBlocks(url, auth) {
   }
 }
 
-// export function evaluateContentMatch(sections, liveWebsiteContentArray) {
-//   const report = [];
-  
-//   // Ensure we are mapping the text content property
-//   const normalizedLiveArray = liveWebsiteContentArray.map(item => ({
-//     raw: item.text || "",
-//     clean: normalize(item.text || "") 
-//   }));
-// for (const section of sections) {
-//     const sectionReport = {
-//       sectionHeading: section.heading,
-//       results: [],
-//       status: "PASS",
-//     };
-
-//     for (const item of section.items) {
-//       let matchRecord = null;
-//       let status = "Match";
-//       let actualDisplay = "";
-
-//       if (item.type === "TechList") {
-//         // Logic for TechList: Find matches for items in the array
-//         const foundTechs = item.expected.filter((tech) =>
-//           normalizedLiveArray.some((live) => live.clean.includes(normalize(tech)))
-//         );
-
-//         const matchPercentage = foundTechs.length / item.expected.length;
-        
-//         if (matchPercentage >= 0.5) {
-//           matchRecord = { raw: foundTechs.join(", ") };
-//           actualDisplay = matchRecord.raw;
-//         } else {
-//           status = "Mismatch";
-//           actualDisplay = "— Missing or Mismatched —";
-//           sectionReport.status = "FAIL";
-//         }
-//       } else {
-//         // Logic for Paragraph/Heading: String similarity
-//         const normalizedExpected = normalize(item.expected);
-//         if (!normalizedExpected) continue;
-
-//         matchRecord = normalizedLiveArray.find((live) => 
-//           calculateStringSimilarity(live.clean, normalizedExpected) > 0.9
-//         );
-
-//         if (matchRecord) {
-//           actualDisplay = matchRecord.raw;
-//         } else {
-//           status = "Mismatch";
-//           sectionReport.status = "FAIL";
-          
-//           // Find closest match for display
-//           const closestMatch = normalizedLiveArray.reduce((best, current) => {
-//             const sim = calculateStringSimilarity(current.clean, normalizedExpected);
-//             return (sim > best.score) ? { score: sim, raw: current.raw } : best;
-//           }, { score: 0, raw: "— Missing —" });
-          
-//           actualDisplay = closestMatch.raw;
-//         }
-//       }
-
-//       sectionReport.results.push({
-//         label: item.type,
-//         expected: Array.isArray(item.expected) ? item.expected.join(", ") : item.expected,
-//         actual: actualDisplay,
-//         status: status,
-//       });
-//     }
-//     report.push(sectionReport);
-//   }
-//   return report;
-// }
-
 export function evaluateContentMatch(sections, liveWebsiteContentArray) {
   const report = [];
+  
+  // Ensure we are mapping the text content property
   const normalizedLiveArray = liveWebsiteContentArray.map(item => ({
     raw: item.text || "",
-    clean: normalize(item.text || "")
+    clean: normalize(item.text || "") 
   }));
-
-  for (const section of sections) {
-    const sectionReport = { sectionHeading: section.heading, results: [], status: "PASS" };
+for (const section of sections) {
+    const sectionReport = {
+      sectionHeading: section.heading,
+      results: [],
+      status: "PASS",
+    };
 
     for (const item of section.items) {
+      let matchRecord = null;
       let status = "Match";
       let actualDisplay = "";
 
       if (item.type === "TechList") {
-        const foundTechs = item.expected.filter(tech =>
-          normalizedLiveArray.some(live => live.clean.includes(normalize(tech)))
+        // Logic for TechList: Find matches for items in the array
+        const foundTechs = item.expected.filter((tech) =>
+          normalizedLiveArray.some((live) => live.clean.includes(normalize(tech)))
         );
-        status = (foundTechs.length / item.expected.length >= 0.5) ? "Match" : "Mismatch";
-        actualDisplay = foundTechs.join(", ");
-      } else {
-        // --- SENTENCE-LEVEL COMPARISON ---
-        const sentences = item.expected.split(/[.!?]+/).filter(s => s.trim().length > 10);
-        
-        // Find if the website content contains these sentences
-        const matchedSentences = sentences.filter(sentence => {
-          const normSent = normalize(sentence);
-          return normalizedLiveArray.some(live => live.clean.includes(normSent));
-        });
 
-        const score = matchedSentences.length / (sentences.length || 1);
+        const matchPercentage = foundTechs.length / item.expected.length;
         
-        if (score >= 0.6) { // 60% of sentences must match
-          status = "Match";
-          actualDisplay = item.expected; // Blueprint matches the essence
+        if (matchPercentage >= 0.5) {
+          matchRecord = { raw: foundTechs.join(", ") };
+          actualDisplay = matchRecord.raw;
+        } else {
+          status = "Mismatch";
+          actualDisplay = "— Missing or Mismatched —";
+          sectionReport.status = "FAIL";
+        }
+      } else {
+        // Logic for Paragraph/Heading: String similarity
+        const normalizedExpected = normalize(item.expected);
+        if (!normalizedExpected) continue;
+
+        matchRecord = normalizedLiveArray.find((live) => 
+          calculateStringSimilarity(live.clean, normalizedExpected) > 0.9
+        );
+
+        if (matchRecord) {
+          actualDisplay = matchRecord.raw;
         } else {
           status = "Mismatch";
           sectionReport.status = "FAIL";
-          // Find the best single block that contains our text
-          const bestMatch = normalizedLiveArray.reduce((prev, curr) => 
-            curr.clean.includes(normalize(item.expected.substring(0, 20))) ? curr : prev
-          , { raw: "— Missing —" });
-          actualDisplay = bestMatch.raw;
+          
+          // Find closest match for display
+          const closestMatch = normalizedLiveArray.reduce((best, current) => {
+            const sim = calculateStringSimilarity(current.clean, normalizedExpected);
+            return (sim > best.score) ? { score: sim, raw: current.raw } : best;
+          }, { score: 0, raw: "— Missing —" });
+          
+          actualDisplay = closestMatch.raw;
         }
       }
 
@@ -196,3 +138,61 @@ export function evaluateContentMatch(sections, liveWebsiteContentArray) {
   }
   return report;
 }
+
+// export function evaluateContentMatch(sections, liveWebsiteContentArray) {
+//   const report = [];
+//   const normalizedLiveArray = liveWebsiteContentArray.map(item => ({
+//     raw: item.text || "",
+//     clean: normalize(item.text || "")
+//   }));
+
+//   for (const section of sections) {
+//     const sectionReport = { sectionHeading: section.heading, results: [], status: "PASS" };
+
+//     for (const item of section.items) {
+//       let status = "Match";
+//       let actualDisplay = "";
+
+//       if (item.type === "TechList") {
+//         const foundTechs = item.expected.filter(tech =>
+//           normalizedLiveArray.some(live => live.clean.includes(normalize(tech)))
+//         );
+//         status = (foundTechs.length / item.expected.length >= 0.5) ? "Match" : "Mismatch";
+//         actualDisplay = foundTechs.join(", ");
+//       } else {
+//         // --- SENTENCE-LEVEL COMPARISON ---
+//         const sentences = item.expected.split(/[.!?]+/).filter(s => s.trim().length > 10);
+        
+//         // Find if the website content contains these sentences
+//         const matchedSentences = sentences.filter(sentence => {
+//           const normSent = normalize(sentence);
+//           return normalizedLiveArray.some(live => live.clean.includes(normSent));
+//         });
+
+//         const score = matchedSentences.length / (sentences.length || 1);
+        
+//         if (score >= 0.6) { // 60% of sentences must match
+//           status = "Match";
+//           actualDisplay = item.expected; // Blueprint matches the essence
+//         } else {
+//           status = "Mismatch";
+//           sectionReport.status = "FAIL";
+//           // Find the best single block that contains our text
+//           const bestMatch = normalizedLiveArray.reduce((prev, curr) => 
+//             curr.clean.includes(normalize(item.expected.substring(0, 20))) ? curr : prev
+//           , { raw: "— Missing —" });
+//           actualDisplay = bestMatch.raw;
+//         }
+//       }
+
+//       sectionReport.results.push({
+//         label: item.type,
+//         expected: Array.isArray(item.expected) ? item.expected.join(", ") : item.expected,
+//         actual: actualDisplay,
+//         status: status,
+//       });
+//     }
+//     report.push(sectionReport);
+//   }
+//   return report;
+// }
