@@ -37,94 +37,120 @@ export async function extractUrlBlocks(url, auth) {
     await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
 
     const blocks = await page.evaluate(() => {
-      const results = [];
-      // Added 'div' to selectors to capture custom styled headings
-      const TEXT_SELECTORS =
-        "h1,h2,h3,h4,h5,h6,p,li,button,a,label,span,td,th,div";
-      const allEls = document.querySelectorAll(TEXT_SELECTORS);
+  const results = [];
+  const TEXT_SELECTORS = "h1,h2,h3,h4,h5,h6,p,li,button,a,label,span,td,th,div";
+  const allEls = document.querySelectorAll(TEXT_SELECTORS);
 
-      for (const el of allEls) {
-        // Skip hidden elements that take up no space (often used for mobile/desktop toggles)
-        const style = window.getComputedStyle(el);
-        if (style.display === "none" || style.visibility === "hidden") continue;
+  for (const el of allEls) {
+    // 1. Skip hidden elements
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") continue;
 
-        // Skip boilerplate containers
-        if (el.closest('header, nav, footer, [role="navigation"]')) continue;
+    // 2. Skip boilerplate
+    if (el.closest('header, nav, footer, [role="navigation"]')) continue;
 
-        let text = (el.innerText || "").replace(/\s+/g, " ").trim();
+    // 3. DE-DUPLICATION: 
+    // If this element's parent is also one of our target selectors 
+    // and contains the same text, skip this child to avoid fragments.
+    const parent = el.parentElement;
+    if (parent && TEXT_SELECTORS.split(',').includes(parent.tagName.toLowerCase())) {
+        const parentText = (parent.innerText || "").replace(/\s+/g, " ").trim();
+        const currentText = (el.innerText || "").replace(/\s+/g, " ").trim();
+        // If parent has the same content, skip the child (fragment)
+        if (parentText === currentText) continue;
+    }
 
-        // Capture divs only if they contain substantial text (prevents noise)
-        if (el.tagName === "DIV" && text.length < 20) continue;
+    let text = (el.innerText || "").replace(/\s+/g, " ").trim();
 
-        if (text.length > 2) results.push({ text });
-      }
-      return results;
-    });
+    // 4. Filter noise
+    if (el.tagName === "DIV" && text.length < 20) continue;
+    if (text.length > 2) results.push({ text });
+  }
+  return results;
+});
     return blocks;
   } finally {
     if (browser) await browser.close();
   }
 }
 
+// Add this helper function at the top of your file to safely extract words
+function extractWords(str) {
+  return (str || "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ") // Replace punctuation with spaces
+    .replace(/\s+/g, " ") // Clean up double spaces
+    .trim()
+    .split(" ");
+}
+
 export function evaluateContentMatch(sections, liveWebsiteContentArray) {
   const report = [];
-  
-  // Ensure we are mapping the text content property
   const normalizedLiveArray = liveWebsiteContentArray.map(item => ({
     raw: item.text || "",
-    clean: normalize(item.text || "") 
+    clean: normalize(item.text || "")
   }));
-for (const section of sections) {
-    const sectionReport = {
-      sectionHeading: section.heading,
-      results: [],
-      status: "PASS",
-    };
+
+  for (const section of sections) {
+    const sectionReport = { sectionHeading: section.heading, results: [], status: "PASS" };
 
     for (const item of section.items) {
-      let matchRecord = null;
       let status = "Match";
       let actualDisplay = "";
 
       if (item.type === "TechList") {
-        // Logic for TechList: Find matches for items in the array
-        const foundTechs = item.expected.filter((tech) =>
-          normalizedLiveArray.some((live) => live.clean.includes(normalize(tech)))
+        const foundTechs = item.expected.filter(tech =>
+          normalizedLiveArray.some(live => {
+            const normTech = normalize(tech);
+            return live.clean.includes(normTech) || normTech.includes(live.clean);
+          })
         );
-
-        const matchPercentage = foundTechs.length / item.expected.length;
-        
+        const matchPercentage = foundTechs.length / (item.expected.length || 1);
         if (matchPercentage >= 0.5) {
-          matchRecord = { raw: foundTechs.join(", ") };
-          actualDisplay = matchRecord.raw;
+          status = "Match";
+          actualDisplay = foundTechs.join(", ");
         } else {
           status = "Mismatch";
-          actualDisplay = "— Missing or Mismatched —";
           sectionReport.status = "FAIL";
+          actualDisplay = foundTechs.length > 0 ? `Found: ${foundTechs.join(", ")}` : "— Missing —";
         }
       } else {
-        // Logic for Paragraph/Heading: String similarity
-        const normalizedExpected = normalize(item.expected);
-        if (!normalizedExpected) continue;
+        // --- PARAGRAPH: TWO-STEP STRICT VERIFICATION ---
+        
+        // Step 1: Find the best matching block in the DOM
+        const bestMatch = normalizedLiveArray.reduce((best, current) => {
+          // Fallback to your string similarity to locate the container
+          const sim = calculateStringSimilarity(current.clean, normalize(item.expected));
+          return (sim > best.score) ? { score: sim, raw: current.raw } : best;
+        }, { score: 0, raw: "— Missing —" });
 
-        matchRecord = normalizedLiveArray.find((live) => 
-          calculateStringSimilarity(live.clean, normalizedExpected) > 0.9
-        );
-
-        if (matchRecord) {
-          actualDisplay = matchRecord.raw;
-        } else {
-          status = "Mismatch";
-          sectionReport.status = "FAIL";
-          
-          // Find closest match for display
-          const closestMatch = normalizedLiveArray.reduce((best, current) => {
-            const sim = calculateStringSimilarity(current.clean, normalizedExpected);
-            return (sim > best.score) ? { score: sim, raw: current.raw } : best;
-          }, { score: 0, raw: "— Missing —" });
-          
-          actualDisplay = closestMatch.raw;
+        // Step 2: Strict Word-by-Word Analysis
+        const expectedWords = extractWords(item.expected);
+        const actualWords = extractWords(bestMatch.raw);
+        
+        let matchedWordCount = 0;
+        for (const word of expectedWords) {
+            const foundIndex = actualWords.indexOf(word);
+            if (foundIndex !== -1) {
+                matchedWordCount++;
+                // Remove the word once matched to prevent double-counting
+                actualWords.splice(foundIndex, 1); 
+            }
         }
+
+        // Calculate how many of our required words actually appeared
+        const wordMatchRatio = matchedWordCount / (expectedWords.length || 1);
+
+        // Require 98% exact word matches (Catches the missing "Gen" word)
+        if (wordMatchRatio >= 0.98) {
+            status = "Match";
+        } else {
+            status = "Mismatch";
+            sectionReport.status = "FAIL";
+        }
+        
+        // Always display what we found so the tester can visually compare the differences
+        actualDisplay = bestMatch.raw;
       }
 
       sectionReport.results.push({
@@ -138,61 +164,3 @@ for (const section of sections) {
   }
   return report;
 }
-
-// export function evaluateContentMatch(sections, liveWebsiteContentArray) {
-//   const report = [];
-//   const normalizedLiveArray = liveWebsiteContentArray.map(item => ({
-//     raw: item.text || "",
-//     clean: normalize(item.text || "")
-//   }));
-
-//   for (const section of sections) {
-//     const sectionReport = { sectionHeading: section.heading, results: [], status: "PASS" };
-
-//     for (const item of section.items) {
-//       let status = "Match";
-//       let actualDisplay = "";
-
-//       if (item.type === "TechList") {
-//         const foundTechs = item.expected.filter(tech =>
-//           normalizedLiveArray.some(live => live.clean.includes(normalize(tech)))
-//         );
-//         status = (foundTechs.length / item.expected.length >= 0.5) ? "Match" : "Mismatch";
-//         actualDisplay = foundTechs.join(", ");
-//       } else {
-//         // --- SENTENCE-LEVEL COMPARISON ---
-//         const sentences = item.expected.split(/[.!?]+/).filter(s => s.trim().length > 10);
-        
-//         // Find if the website content contains these sentences
-//         const matchedSentences = sentences.filter(sentence => {
-//           const normSent = normalize(sentence);
-//           return normalizedLiveArray.some(live => live.clean.includes(normSent));
-//         });
-
-//         const score = matchedSentences.length / (sentences.length || 1);
-        
-//         if (score >= 0.6) { // 60% of sentences must match
-//           status = "Match";
-//           actualDisplay = item.expected; // Blueprint matches the essence
-//         } else {
-//           status = "Mismatch";
-//           sectionReport.status = "FAIL";
-//           // Find the best single block that contains our text
-//           const bestMatch = normalizedLiveArray.reduce((prev, curr) => 
-//             curr.clean.includes(normalize(item.expected.substring(0, 20))) ? curr : prev
-//           , { raw: "— Missing —" });
-//           actualDisplay = bestMatch.raw;
-//         }
-//       }
-
-//       sectionReport.results.push({
-//         label: item.type,
-//         expected: Array.isArray(item.expected) ? item.expected.join(", ") : item.expected,
-//         actual: actualDisplay,
-//         status: status,
-//       });
-//     }
-//     report.push(sectionReport);
-//   }
-//   return report;
-// }
