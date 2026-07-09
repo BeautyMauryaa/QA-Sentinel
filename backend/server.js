@@ -33,11 +33,7 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 4000;
-// const corsOptions = {
-//   origin: ['https://qa-sentinel-delta.vercel.app/', 'http://localhost:5173'],
-//   methods: ['GET', 'POST'],
-//   credentials: true
-// };
+
 app.use(
   cors({
     origin: [
