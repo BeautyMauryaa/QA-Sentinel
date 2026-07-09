@@ -3,6 +3,7 @@ import { chromium } from "playwright";
 import fs from "fs";
 import cors from "cors";
 import path from "path";
+import sharp from 'sharp';
 import { fileURLToPath } from "url";
 import { nanoid } from "nanoid";
 import multer from "multer";
@@ -13,44 +14,63 @@ import { SUITES } from "./suiteRegistry.js";
 
 // Import your custom extraction utils and your fixed match engine module
 import { parseAndCleanDocument } from "./utils/docParser.js";
-import { extractUrlBlocks, evaluateContentMatch } from "./engines/contentMatchEngine.js";
+import {
+  extractUrlBlocks,
+  evaluateContentMatch,
+} from "./engines/contentMatchEngine.js";
 import mammoth from "mammoth";
 
-import {
-  captureScreenshots,
-  saveBaseline,
-  getBaseline,
-  listBaselines,
-  deleteBaseline,
-  runVisualComparison,
-  BASELINE_DIR,
-  DIFF_DIR,
-} from "./visualRegression.js";
+import { runVisualComparison } from "./engines/visualMatchEngine.js";
+const DIFF_DIR = path.join(process.cwd(), 'data', 'diffs');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Create the folder if it doesn't exist
+if (!fs.existsSync(DIFF_DIR)) {
+  fs.mkdirSync(DIFF_DIR, { recursive: true });
+}
+//const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use("/screenshots", express.static(SCREENSHOT_DIR)); 
-app.use("/baselines",   express.static(BASELINE_DIR));   
-app.use("/diffs",       express.static(DIFF_DIR));       
 
 const PORT = process.env.PORT || 4000;
 
 // Multer for .docx uploads (Memory Storage with Safe Error Callback)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
-  fileFilter(req, file, cb) {
-    const isDocxExt = file.originalname.toLowerCase().endsWith(".docx");
-    const isDocxMime = 
-      file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      file.mimetype === "application/octet-stream"; // Safe fallback for OS environment variance
+// const upload = multer({
+//   storage: multer.memoryStorage(),
+//   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+//   fileFilter(req, file, cb) {
+//     const isDocxExt = file.originalname.toLowerCase().endsWith(".docx");
+//     const isDocxMime =
+//       file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+//       file.mimetype === "application/octet-stream"; // Safe fallback for OS environment variance
 
-    if (isDocxExt || isDocxMime) {
+//     if (isDocxExt || isDocxMime) {
+//       cb(null, true);
+//     } else {
+//       cb(new MulterError("LIMIT_UNEXPECTED_FILE", "Only .docx files are accepted."), false);
+//     }
+//   },
+// });
+
+// --- File Upload Configuration ---
+const docxUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter(req, file, cb) {
+    if (file.originalname.toLowerCase().endsWith(".docx")) {
       cb(null, true);
     } else {
-      cb(new MulterError("LIMIT_UNEXPECTED_FILE", "Only .docx files are accepted."), false);
+      cb(new Error("Only .docx files are accepted."), false);
+    }
+  },
+});
+
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter(req, file, cb) {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are accepted."), false);
     }
   },
 });
@@ -96,75 +116,112 @@ app.get("/api/suites", (req, res) => {
 
 // --- Run tests ----------------------------------------------------------------
 
-const handleTestRunUpload = upload.single("document");
-app.post("/api/tests/run", (req, res, next) => {
-  handleTestRunUpload(req, res, function (err) {
-    if (err) {
-      return res.status(400).json({ error: err.message || "File upload validation failed." });
+const handleTestRunUpload = docxUpload.single("document");
+app.post(
+  "/api/tests/run",
+  (req, res, next) => {
+    handleTestRunUpload(req, res, function (err) {
+      if (err) {
+        return res
+          .status(400)
+          .json({ error: err.message || "File upload validation failed." });
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const url = req.body.url;
+    const suites = JSON.parse(req.body.suites || "[]");
+    const auth = {
+      username: req.body.username,
+      password: req.body.password,
+    };
+
+    if (!url || typeof url !== "string") {
+      return res.status(400).json({ error: "Field 'url' is required." });
     }
-    next();
-  });
-}, async (req, res) => {
-  const url = req.body.url;
-  const suites = JSON.parse(req.body.suites || "[]");
-  const auth = {
-    username: req.body.username,
-    password: req.body.password,
-  };
 
-  if (!url || typeof url !== "string") {
-    return res.status(400).json({ error: "Field 'url' is required." });
-  }
+    let normalizedUrl;
+    try {
+      normalizedUrl = new URL(url).toString();
+    } catch {
+      return res.status(400).json({
+        error:
+          "Field 'url' must be a valid absolute URL, e.g. https://example.com",
+      });
+    }
 
-  let normalizedUrl;
-  try {
-    normalizedUrl = new URL(url).toString();
-  } catch {
-    return res.status(400).json({
-      error: "Field 'url' must be a valid absolute URL, e.g. https://example.com",
+    const suiteIds =
+      Array.isArray(suites) && suites.length > 0
+        ? suites
+        : SUITES.map((s) => s.id);
+
+    const invalidSuites = suiteIds.filter(
+      (id) => !SUITES.find((s) => s.id === id),
+    );
+    if (invalidSuites.length > 0) {
+      return res
+        .status(400)
+        .json({ error: `Unknown suite id(s): ${invalidSuites.join(", ")}` });
+    }
+
+    const authCheck = await checkAuthentication(normalizedUrl, auth);
+
+    if (authCheck.requiresAuth && (!auth?.username || !auth?.password)) {
+      return res.status(401).json({
+        error:
+          "This website requires authentication. Please enter username and password.",
+      });
+    }
+
+    if (auth?.username && auth?.password && authCheck.status === 401) {
+      return res.status(401).json({ error: "Invalid username or password." });
+    }
+
+    const runId = nanoid();
+    db.insertRun({
+      id: runId,
+      url: normalizedUrl,
+      suites: suiteIds,
+      status: "queued",
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      started_at: new Date().toISOString(),
+      completed_at: null,
     });
-  }
 
-  const suiteIds =
-    Array.isArray(suites) && suites.length > 0
-      ? suites
-      : SUITES.map((s) => s.id);
+    // Remove the restrictive global upload middleware if you have one
+    // Instead, use these specific instances:
 
-  const invalidSuites = suiteIds.filter((id) => !SUITES.find((s) => s.id === id));
-  if (invalidSuites.length > 0) {
-    return res
-      .status(400)
-      .json({ error: `Unknown suite id(s): ${invalidSuites.join(", ")}` });
-  }
-
-  const authCheck = await checkAuthentication(normalizedUrl, auth);
-
-  if (authCheck.requiresAuth && (!auth?.username || !auth?.password)) {
-    return res.status(401).json({
-      error: "This website requires authentication. Please enter username and password.",
+    // For .docx files
+    const docxUpload = multer({
+      storage: multer.memoryStorage(),
+      fileFilter(req, file, cb) {
+        if (file.originalname.toLowerCase().endsWith(".docx")) {
+          cb(null, true);
+        } else {
+          cb(new Error("Only .docx files are accepted."), false);
+        }
+      },
     });
-  }
 
-  if (auth?.username && auth?.password && authCheck.status === 401) {
-    return res.status(401).json({ error: "Invalid username or password." });
-  }
+    // For images (Visual Comparison)
+    const imageUpload = multer({
+      storage: multer.memoryStorage(),
+      fileFilter(req, file, cb) {
+        if (file.mimetype.startsWith("image/")) {
+          cb(null, true);
+        } else {
+          cb(new Error("Only image files are accepted."), false);
+        }
+      },
+    });
 
-  const runId = nanoid();
-  db.insertRun({
-    id: runId,
-    url: normalizedUrl,
-    suites: suiteIds,
-    status: "queued",
-    passed: 0,
-    failed: 0,
-    skipped: 0,
-    started_at: new Date().toISOString(),
-    completed_at: null,
-  });
-
-  res.status(202).json({ runId, status: "queued" });
-  executeRun(runId, normalizedUrl, suiteIds, auth);
-});
+    res.status(202).json({ runId, status: "queued" });
+    executeRun(runId, normalizedUrl, suiteIds, auth);
+  },
+);
 
 // --- Regression comparison ----------------------------------------------------
 
@@ -180,6 +237,31 @@ app.get("/api/tests/compare", (req, res) => {
   }
   res.json(compareRuns(run1, run2));
 });
+// Update this route specifically
+app.post("/api/visual/compare", imageUpload.single("design"), async (req, res) => {
+  try {
+    const { url, username, password, width, height } = req.body; // Add width/height
+    
+    if (!req.file) return res.status(400).json({ error: "No image file uploaded." });
+    if (!url) return res.status(400).json({ error: "URL is required." });
+
+    const runId = nanoid();
+    // Parse viewport dimensions safely
+    const viewport = { 
+      width: parseInt(width) || 1920, 
+      height: parseInt(height) || 1080 
+    };
+    
+    // Pass viewport to your engine
+    const result = await runVisualComparison(url, { username, password }, runId, req.file.buffer, viewport);
+    res.json(result);
+  } catch (err) {
+    console.error("CRITICAL BACKEND ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.use('/diffs', express.static(path.join(process.cwd(), 'data', 'diffs')));
 
 // --- Run status / results -----------------------------------------------------
 
@@ -209,149 +291,78 @@ app.delete("/api/history/:id", (req, res) => {
 // --- Content Match Engine -----------------------------------------------------
 // --- Content Match Engine -----------------------------------------------------
 
-const handleContentMatchUpload = upload.single("docx");
-app.post("/api/content-match", (req, res, next) => {
-  handleContentMatchUpload(req, res, function (err) {
-    if (err) {
-      return res.status(400).json({ error: err.message || "File upload validation failed." });
-    }
-    next();
-  });
-}, async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "A .docx file is required." });
-  }
-
-  const { url, username, password } = req.body || {};
-  if (!url) return res.status(400).json({ error: "Field 'url' is required." });
-
-  try {
-    const auth = username && password ? { username, password } : undefined;
-
-    // 1. Extract text from DOCX
-    const docxExtractionResult = await mammoth.extractRawText({ buffer: req.file.buffer });
-    const rawLines = docxExtractionResult.value.split("\n");
-    const cleanStructuredSections = parseAndCleanDocument(rawLines);
-
-    // 2. Fetch DOM content (The Scraper)
-    const webBlocks = await extractUrlBlocks(url, auth);
-    
-    // DEBUG: Log the result to see if it's empty
-    console.log("DEBUG: Web Blocks length:", webBlocks?.length);
-
-    // 3. Evaluate and send report
-    const reportData = evaluateContentMatch(cleanStructuredSections, webBlocks);
-
-    res.json({
-      url: url,
-      filename: req.file.originalname,
-      reportData
+const handleContentMatchUpload = docxUpload.single("docx");
+app.post(
+  "/api/content-match",
+  (req, res, next) => {
+    handleContentMatchUpload(req, res, function (err) {
+      if (err) {
+        return res
+          .status(400)
+          .json({ error: err.message || "File upload validation failed." });
+      }
+      next();
     });
-  } catch (err) {
-    console.error("Content match error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+  },
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "A .docx file is required." });
+    }
 
-// --- Visual Regression --------------------------------------------------------
+    const { url, username, password } = req.body || {};
+    if (!url)
+      return res.status(400).json({ error: "Field 'url' is required." });
 
-app.post("/api/visual/baseline", async (req, res) => {
-  const { url, username, password } = req.body || {};
-  if (!url) return res.status(400).json({ error: "Field 'url' is required." });
-  let normalizedUrl;
-  try { normalizedUrl = new URL(url).toString(); }
-  catch { return res.status(400).json({ error: "Invalid URL." }); }
-  try {
-    const auth = username && password ? { username, password } : undefined;
-    const screenshots = await captureScreenshots(normalizedUrl, auth);
-    const manifest    = saveBaseline(normalizedUrl, screenshots);
-    res.json({ success: true, manifest });
-  } catch (err) {
-    res.status(500).json({ error: err.message || "Failed to capture baseline." });
-  }
-});
+    try {
+      const auth = username && password ? { username, password } : undefined;
 
-app.get("/api/visual/baseline", (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Query param 'url' is required." });
-  const manifest = getBaseline(url);
-  if (!manifest) return res.status(404).json({ error: "No baseline found." });
-  res.json(manifest);
-});
+      // 1. Extract text from DOCX
+      const docxExtractionResult = await mammoth.extractRawText({
+        buffer: req.file.buffer,
+      });
+      const rawLines = docxExtractionResult.value.split("\n");
+      const cleanStructuredSections = parseAndCleanDocument(rawLines);
 
-app.get("/api/visual/baselines", (req, res) => {
-  res.json(listBaselines());
-});
+      // 2. Fetch DOM content (The Scraper)
+      const webBlocks = await extractUrlBlocks(url, auth);
 
-app.delete("/api/visual/baseline", (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Query param 'url' is required." });
-  const deleted = deleteBaseline(url);
-  if (!deleted) return res.status(404).json({ error: "No baseline found." });
-  res.json({ success: true });
-});
+      // DEBUG: Log the result to see if it's empty
+      console.log("DEBUG: Web Blocks length:", webBlocks?.length);
 
-app.post("/api/visual/compare", async (req, res) => {
-  const { url, username, password } = req.body || {};
-  if (!url) return res.status(400).json({ error: "Field 'url' is required." });
-  let normalizedUrl;
-  try { normalizedUrl = new URL(url).toString(); }
-  catch { return res.status(400).json({ error: "Invalid URL." }); }
-  const baseline = getBaseline(normalizedUrl);
-  if (!baseline) return res.status(404).json({ error: "No baseline found. Capture a baseline first." });
-  try {
-    const auth   = username && password ? { username, password } : undefined;
-    const runId  = nanoid();
-    const result = await runVisualComparison(normalizedUrl, auth, runId);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message || "Visual comparison failed." });
-  }
-});
+      // 3. Evaluate and send report
+      const reportData = evaluateContentMatch(
+        cleanStructuredSections,
+        webBlocks,
+      );
 
-// Upload Figma export as the baseline
-app.post("/api/visual/set-baseline", upload.single("design"), (req, res) => {
-  const { url } = req.body;
-  const filePath = path.join(BASELINE_DIR, `${encodeURIComponent(url)}.png`);
-  fs.writeFileSync(filePath, req.file.buffer);
-  res.json({ success: true, message: "Figma baseline set." });
-});
-
-// Run comparison
-app.post("/api/visual/compare-ui", async (req, res) => {
-  const { url } = req.body;
-  const baselinePath = path.join(BASELINE_DIR, `${encodeURIComponent(url)}.png`);
-  
-  if (!fs.existsSync(baselinePath)) {
-    return res.status(404).json({ error: "Upload Figma design first." });
-  }
-  
-  const runId = nanoid();
-  const result = await compareWithFigmaBaseline(url, baselinePath, runId);
-  res.json(result);
-});
+      res.json({
+        url: url,
+        filename: req.file.originalname,
+        reportData,
+      });
+    } catch (err) {
+      console.error("Content match error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+);
 
 // Add to your server.js
 app.get("/api/report/download", (req, res) => {
   // Replace this with how you store your latest report in your backend
-  const reportData = global.latestReportData; 
+  const reportData = global.latestReportData;
 
   if (!reportData) {
-    return res.status(404).json({ error: "No report data available to download." });
+    return res
+      .status(404)
+      .json({ error: "No report data available to download." });
   }
 
   // Set headers to trigger a file download
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Content-Disposition', 'attachment; filename="qa-report.json"');
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Content-Disposition", 'attachment; filename="qa-report.json"');
   res.send(JSON.stringify(reportData, null, 2));
 });
-
-// Explicit IPv4 interface listener to prevent IPv6 binding issues (ECONNREFUSED) with Vite proxy configurations
-// app.listen(PORT, "127.0.0.1", () => {
-//   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);
-// });
-
-
 
 app.listen(PORT, () => {
   console.log(`QA Sentinel backend listening on http://127.0.0.1:${PORT}`);

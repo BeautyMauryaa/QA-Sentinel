@@ -3,17 +3,15 @@ import RunPanel from "./components/RunPanel.jsx";
 import ResultsDashboard from "./components/ResultsDashboard.jsx";
 import HistoryPanel from "./components/HistoryPanel.jsx";
 import CompareView from "./components/CompareView.jsx";
-import OldContentMatchPanel from "./panels/ContentMatchPanel"; 
 import ContentMatchPanel from "./components/ContentMatchPanel";
-//import VisualRegressionPanel from "./components/VisualRegressionPanel.jsx";
+import VisualMatchPanel from './components/VisualMatchPanel'; // Import the new panel
+
 const TABS = [
   { id: "run",     label: "Run"               },
-  // { id: "visual",  label: "Visual Regression" },  // ← add
   { id: "content", label: "Content Match"     },
+  { id: "visual",  label: "Visual Regression" }, // Added new tab
   { id: "history", label: "History"           },
 ];
-
-
 
 export default function App() {
   const [tab, setTab] = useState("run");
@@ -53,12 +51,13 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => {
-  setTab(t.id);
-  if (t.id === "history" || t.id === "content" ) {
-    setActiveRunId(null);
-    setCompareIds(null);
-  }
-}}
+                  setTab(t.id);
+                  // Reset state when switching away from "run"
+                  if (t.id !== "run") {
+                    setActiveRunId(null);
+                    setCompareIds(null);
+                  }
+                }}
                 className={`font-mono text-xs uppercase tracking-widest px-3 py-1.5 rounded-md transition-colors ${
                   tab === t.id
                     ? "bg-panel text-mist border border-panelborder"
@@ -94,8 +93,8 @@ export default function App() {
         {tab === "history" && (
           <HistoryPanel onView={handleViewRun} onCompare={handleCompare} />
         )}
-        {tab === "content" && <ContentMatchPanel />} {/* ← add this line */}
-        {/* {tab === "visual"  && <VisualRegressionPanel />} */}
+        {tab === "content" && <ContentMatchPanel />}
+        {tab === "visual" && <VisualMatchPanel />} {/* Render the new panel */}
       </main>
     </div>
   );

@@ -1,44 +1,58 @@
+import { chromium } from "playwright";
 import fs from "fs";
 import path from "path";
 import { PNG } from "pngjs";
 import pixelmatch from "pixelmatch";
-import { chromium } from "playwright";
+import sharp from "sharp";
 
-const BASELINE_DIR = "./baselines"; // Figma exports go here
-const DIFF_DIR = "./diffs";         // Comparison results go here
+export async function runVisualComparison(url, auth, runId, baselineBuffer, viewport = { width: 1920, height: 1080 }) {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: viewport,
+    ignoreHTTPSErrors: true,
+    httpCredentials: auth?.username && auth?.password ? { username: auth.username, password: auth.password } : undefined,
+  });
 
-// Ensure directories exist
-[BASELINE_DIR, DIFF_DIR].forEach(dir => { if (!fs.existsSync(dir)) fs.mkdirSync(dir); });
-
-export async function compareWithFigmaBaseline(url, designFilePath, runId) {
-  // 1. Capture Live Screenshot
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  await page.goto(url, { waitUntil: "networkidle" });
-  const liveScreenshotPath = path.join(DIFF_DIR, `live-${runId}.png`);
+  const page = await context.newPage();
+  await page.goto(url, { waitUntil: "load", timeout: 30000 });
+  
+  const liveScreenshotPath = path.join("./data/diffs", `live-${runId}.png`);
   await page.screenshot({ path: liveScreenshotPath, fullPage: true });
   await browser.close();
 
-  // 2. Load Images
-  const imgLive = PNG.sync.read(fs.readFileSync(liveScreenshotPath));
-  const imgBaseline = PNG.sync.read(fs.readFileSync(designFilePath));
+  // 1. Process Baseline and Live Image with Sharp
+  const baselineMetadata = await sharp(baselineBuffer).metadata();
+  
+  // Resize live screenshot to match baseline dimensions for pixel-by-pixel comparison
+  const liveResizedBuffer = await sharp(liveScreenshotPath)
+    .resize(baselineMetadata.width, baselineMetadata.height)
+    .toBuffer();
 
-  // 3. Prepare Diff Object
-  const { width, height } = imgLive;
+  // 2. Prepare PNG objects
+  const imgBaseline = PNG.sync.read(baselineBuffer);
+  const imgLive = PNG.sync.read(liveResizedBuffer);
+  
+  const { width, height } = imgBaseline;
   const diff = new PNG({ width, height });
 
-  // 4. Compare (Threshold 0.15 is good for Figma-to-Browser variance)
-  const numDiffPixels = pixelmatch(
-    imgLive.data, imgBaseline.data, diff.data, width, height,
-    { threshold: 0.15 }
-  );
-
-  // 5. Save Diff
-  const diffPath = path.join(DIFF_DIR, `diff-${runId}.png`);
+  // 3. Perform Comparison
+  const diffPixels = pixelmatch(imgBaseline.data, imgLive.data, diff.data, width, height, { threshold: 0.15 });
+  
+  // 4. Calculate Stats
+  const totalPixels = width * height;
+  const matchScore = (((totalPixels - diffPixels) / totalPixels) * 100).toFixed(1);
+  
+  const diffFileName = `diff-${runId}.png`;
+  const diffPath = path.join("./data/diffs", diffFileName);
   fs.writeFileSync(diffPath, PNG.sync.write(diff));
 
-  return {
-    numDiffPixels,
-    diffUrl: `/diffs/diff-${runId}.png`
+  // Cleanup
+  if (fs.existsSync(liveScreenshotPath)) fs.unlinkSync(liveScreenshotPath);
+
+  return { 
+    matchScore: parseFloat(matchScore), 
+    diffUrl: `/diffs/${diffFileName}`,
+    totalPixels,
+    diffPixels
   };
 }
