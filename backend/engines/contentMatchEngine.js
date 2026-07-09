@@ -34,53 +34,62 @@ export async function extractUrlBlocks(url, auth) {
   let browser;
   try {
     browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    });
-    const page = await context.newPage();
+    
+    // 1. Prepare configuration with User-Agent and optional HTTP Credentials
+    const contextOptions = {
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    };
 
-    // Use 'networkidle' to ensure all JS-driven content is loaded
-    await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
-
-    const blocks = await page.evaluate(() => {
-  const results = [];
-  const TEXT_SELECTORS = "h1,h2,h3,h4,h5,h6,p,li,button,a,label,span,td,th,div";
-  const allEls = document.querySelectorAll(TEXT_SELECTORS);
-
-  for (const el of allEls) {
-    // 1. Skip hidden elements
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") continue;
-
-    // 2. Skip boilerplate
-    if (el.closest('header, nav, footer, [role="navigation"]')) continue;
-
-    // 3. DE-DUPLICATION: 
-    // If this element's parent is also one of our target selectors 
-    // and contains the same text, skip this child to avoid fragments.
-    const parent = el.parentElement;
-    if (parent && TEXT_SELECTORS.split(',').includes(parent.tagName.toLowerCase())) {
-        const parentText = (parent.innerText || "").replace(/\s+/g, " ").trim();
-        const currentText = (el.innerText || "").replace(/\s+/g, " ").trim();
-        // If parent has the same content, skip the child (fragment)
-        if (parentText === currentText) continue;
+    if (auth?.username && auth?.password) {
+      contextOptions.httpCredentials = {
+        username: auth.username,
+        password: auth.password
+      };
     }
 
-    let text = (el.innerText || "").replace(/\s+/g, " ").trim();
+    // 2. Initialize context with the configuration options
+    const context = await browser.newContext(contextOptions);
+    const page = await context.newPage();
 
-    // 4. Filter noise
-    if (el.tagName === "DIV" && text.length < 20) continue;
-    if (text.length > 2) results.push({ text });
-  }
-  return results;
-});
+    // 3. Navigate with timeout and wait for idle network
+    await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
+
+    // 4. Extract content
+    const blocks = await page.evaluate(() => {
+      const results = [];
+      const TEXT_SELECTORS = "h1,h2,h3,h4,h5,h6,p,li,button,a,label,span,td,th,div";
+      const allEls = document.querySelectorAll(TEXT_SELECTORS);
+
+      for (const el of allEls) {
+        // Skip hidden elements
+        const style = window.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+
+        // Skip boilerplate
+        if (el.closest('header, nav, footer, [role="navigation"]')) continue;
+
+        // DE-DUPLICATION
+        const parent = el.parentElement;
+        if (parent && TEXT_SELECTORS.split(',').includes(parent.tagName.toLowerCase())) {
+          const parentText = (parent.innerText || "").replace(/\s+/g, " ").trim();
+          const currentText = (el.innerText || "").replace(/\s+/g, " ").trim();
+          if (parentText === currentText) continue;
+        }
+
+        let text = (el.innerText || "").replace(/\s+/g, " ").trim();
+
+        // Filter noise
+        if (el.tagName === "DIV" && text.length < 20) continue;
+        if (text.length > 2) results.push({ text });
+      }
+      return results;
+    });
+
     return blocks;
   } finally {
     if (browser) await browser.close();
   }
 }
-
 
 
 export function evaluateContentMatch(sections, liveWebsiteContentArray) {

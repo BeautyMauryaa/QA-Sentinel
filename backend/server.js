@@ -38,17 +38,24 @@ const corsOptions = {
   methods: ['GET', 'POST'],
   credentials: true
 };
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('CORS Policy Blocked This Origin'));
-    }
-  },
-  credentials: true
-}));
+app.use(cors(corsOptions));
+// Multer for .docx uploads (Memory Storage with Safe Error Callback)
+// const upload = multer({
+//   storage: multer.memoryStorage(),
+//   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+//   fileFilter(req, file, cb) {
+//     const isDocxExt = file.originalname.toLowerCase().endsWith(".docx");
+//     const isDocxMime =
+//       file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+//       file.mimetype === "application/octet-stream"; // Safe fallback for OS environment variance
 
+//     if (isDocxExt || isDocxMime) {
+//       cb(null, true);
+//     } else {
+//       cb(new MulterError("LIMIT_UNEXPECTED_FILE", "Only .docx files are accepted."), false);
+//     }
+//   },
+// });
 
 // --- File Upload Configuration ---
 const docxUpload = multer({
