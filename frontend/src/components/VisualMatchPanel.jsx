@@ -17,7 +17,7 @@ const VisualMatchPanel = () => {
 
     setLoading(true);
 
-    
+
     setResult(null);
 
     const fd = new FormData();
@@ -29,8 +29,8 @@ const VisualMatchPanel = () => {
     fd.append('height', form.viewport.height);
 
     try {
-      const { data } = await axios.post('http://127.0.0.1:4000/api/visual/compare', fd);
-      setResult({ ...data, diffUrl: `http://127.0.0.1:4000${data.diffUrl}` });
+      const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/visual/compare`, fd);
+      setResult({ ...data, diffUrl: `${import.meta.env.VITE_API_URL}${data.diffUrl}` });
     } catch (err) {
       alert("Comparison failed: " + (err.response?.data?.error || err.message));
     } finally {
