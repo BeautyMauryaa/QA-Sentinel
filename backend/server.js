@@ -33,7 +33,12 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 4000;
-
+const corsOptions = {
+  origin: ['https://qa-sentinel-delta.vercel.app/', 'http://localhost:5173'],
+  methods: ['GET', 'POST'],
+  credentials: true
+};
+app.use(cors(corsOptions));
 // Multer for .docx uploads (Memory Storage with Safe Error Callback)
 // const upload = multer({
 //   storage: multer.memoryStorage(),
