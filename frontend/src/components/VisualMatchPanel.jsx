@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { api } from '../api'; // Use the consolidated api object
+import { api } from '../api';
 
 export default function VisualMatchPanel() {
   const [url, setUrl] = useState('');
   const [viewport, setViewport] = useState({ width: 1920, height: 1080 });
   const [ignoreSelectors, setIgnoreSelectors] = useState(['.cookie-banner', '.chat-widget']);
   const [newSelector, setNewSelector] = useState('');
+  const [baselineFile, setBaselineFile] = useState(null); // Tracks file for upload
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
 
@@ -24,11 +25,20 @@ export default function VisualMatchPanel() {
   };
 
   const runVisualTest = async () => {
+    if (!baselineFile) return alert("Please upload a reference image first.");
+    
     setLoading(true);
-    setResult(null); // Clear previous result
+    setResult(null);
     try {
-      // Use the consolidated api object here
-      const data = await api.runVisualTest({ url, viewport, ignoreSelectors });
+      // Note: Backend expects path. Ensure your backend handles the uploaded file path
+      const payload = { 
+        url, 
+        viewport, 
+        ignoreSelectors, 
+        baselinePath: `data/baselines/${baselineFile.name}` 
+      };
+      
+      const data = await api.runVisualTest(payload);
       setResult(data);
     } catch (err) {
       console.error("Visual Test Failed:", err);
@@ -47,6 +57,12 @@ export default function VisualMatchPanel() {
         placeholder="https://digimantra.com/..."
         value={url}
         onChange={(e) => setUrl(e.target.value)}
+      />
+
+      <input 
+        type="file" 
+        className="mb-4 block text-sm text-gray-400"
+        onChange={(e) => setBaselineFile(e.target.files[0])} 
       />
 
       <div className="grid grid-cols-2 gap-2 mb-4">
@@ -90,15 +106,44 @@ export default function VisualMatchPanel() {
       </button>
 
       {result && (
-        <div className="mt-6 border-t border-gray-700 pt-4">
-          <h3 className="text-lg">Score: {result.score}%</h3>
-          <p className={`font-bold ${parseFloat(result.score) > 95 ? 'text-green-500' : 'text-red-500'}`}>
-            {parseFloat(result.score) > 95 ? 'PASS' : 'FAIL'}
-          </p>
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            <img src={result.baselinePath} alt="Baseline" />
-            <img src={result.livePath} alt="Live" />
-            <img src={result.diffPath} alt="Difference" />
+        <div className="mt-8 border-t border-gray-700 pt-6">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-bold">Comparison Results</h3>
+            <div className={`px-4 py-2 rounded font-bold ${result.status === 'PASS' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+              {result.status} ({result.score}%)
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {[
+              { title: "Reference", src: result.baselinePath },
+              { title: "Live", src: result.livePath },
+              { title: "Difference", src: result.diffPath }
+            ].map((img, idx) => (
+              <div key={idx} className="bg-gray-800 p-2 rounded border border-gray-700">
+                <p className="text-xs text-gray-400 mb-2 uppercase tracking-wider">{img.title}</p>
+                <img src={`/${img.src}`} alt={img.title} className="w-full rounded shadow-lg" />
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-950 p-4 rounded border border-gray-800">
+            <div>
+              <p className="text-gray-500 text-xs">MATCHED PIXELS</p>
+              <p className="text-lg font-mono">{result.stats.matchedPixels.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-xs">DIFFERENT PIXELS</p>
+              <p className="text-lg font-mono text-red-400">{result.stats.diffPixels.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-xs">THRESHOLD</p>
+              <p className="text-lg font-mono">0.15</p>
+            </div>
+            <div>
+              <p className="text-gray-500 text-xs">COMPARISON TIME</p>
+              <p className="text-lg font-mono">{result.stats.time}</p>
+            </div>
           </div>
         </div>
       )}
