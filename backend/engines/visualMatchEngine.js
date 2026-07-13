@@ -1,58 +1,50 @@
 import { chromium } from "playwright";
-import fs from "fs";
-import path from "path";
-import { PNG } from "pngjs";
-import pixelmatch from "pixelmatch";
 import sharp from "sharp";
+import pixelmatch from "pixelmatch";
+import fs from "fs/promises";
+import path from "path";
 
-export async function runVisualComparison(url, auth, runId, baselineBuffer, viewport = { width: 1920, height: 1080 }) {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: viewport,
-    ignoreHTTPSErrors: true,
-    httpCredentials: auth?.username && auth?.password ? { username: auth.username, password: auth.password } : undefined,
-  });
-
-  const page = await context.newPage();
-  await page.goto(url, { waitUntil: "load", timeout: 30000 });
+export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
+  const browser = await chromium.launch();
   
-  const liveScreenshotPath = path.join("./data/diffs", `live-${runId}.png`);
-  await page.screenshot({ path: liveScreenshotPath, fullPage: true });
+  // 1. Get baseline dimensions from stored file
+  const baselineBuffer = await fs.readFile(baselinePath);
+  const { width, height } = await sharp(baselineBuffer).metadata();
+
+  // 2. Setup Playwright with exact dimensions
+  const context = await browser.newContext({ viewport: { width, height } });
+  const page = await context.newPage();
+  await page.goto(url, { waitUntil: "networkidle" });
+
+  // 3. Hide Dynamic Regions
+  for (const selector of ignoreSelectors) {
+    await page.evaluate((sel) => {
+      document.querySelectorAll(sel).forEach(el => el.style.visibility = "hidden");
+    }, selector);
+  }
+
+  // 4. Capture and crop
+  const livePath = path.join('data', 'screenshots', `live-${Date.now()}.png`);
+  await page.screenshot({ path: livePath });
   await browser.close();
 
-  // 1. Process Baseline and Live Image with Sharp
-  const baselineMetadata = await sharp(baselineBuffer).metadata();
-  
-  // Resize live screenshot to match baseline dimensions for pixel-by-pixel comparison
-  const liveResizedBuffer = await sharp(liveScreenshotPath)
-    .resize(baselineMetadata.width, baselineMetadata.height)
-    .toBuffer();
+  const liveBuffer = await sharp(livePath)
+    .extract({ left: 0, top: 0, width, height })
+    .raw().ensureAlpha().toBuffer();
+    
+  const designRaw = await sharp(baselineBuffer)
+    .raw().ensureAlpha().toBuffer();
 
-  // 2. Prepare PNG objects
-  const imgBaseline = PNG.sync.read(baselineBuffer);
-  const imgLive = PNG.sync.read(liveResizedBuffer);
-  
-  const { width, height } = imgBaseline;
-  const diff = new PNG({ width, height });
+  // 5. Compare
+  const diffPath = path.join('data', 'diffs', `diff-${Date.now()}.png`);
+  const diff = Buffer.alloc(width * height * 4);
+  const diffPixels = pixelmatch(designRaw, liveBuffer, diff, width, height, { threshold: 0.15, includeAA: false });
 
-  // 3. Perform Comparison
-  const diffPixels = pixelmatch(imgBaseline.data, imgLive.data, diff.data, width, height, { threshold: 0.15 });
-  
-  // 4. Calculate Stats
-  const totalPixels = width * height;
-  const matchScore = (((totalPixels - diffPixels) / totalPixels) * 100).toFixed(1);
-  
-  const diffFileName = `diff-${runId}.png`;
-  const diffPath = path.join("./data/diffs", diffFileName);
-  fs.writeFileSync(diffPath, PNG.sync.write(diff));
+  await sharp(diff, { raw: { width, height, channels: 4 } }).toFile(diffPath);
 
-  // Cleanup
-  if (fs.existsSync(liveScreenshotPath)) fs.unlinkSync(liveScreenshotPath);
-
-  return { 
-    matchScore: parseFloat(matchScore), 
-    diffUrl: `/diffs/${diffFileName}`,
-    totalPixels,
-    diffPixels
+  return {
+    score: (((width * height - diffPixels) / (width * height)) * 100).toFixed(2),
+    diffPath,
+    livePath
   };
 }

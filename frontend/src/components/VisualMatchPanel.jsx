@@ -1,93 +1,107 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import { api } from '../api'; // Use the consolidated api object
 
-const VIEWPORTS = [
-  { label: 'Full HD', width: 1920, height: 1080 },
-  { label: 'Laptop', width: 1366, height: 768 },
-  { label: 'Mobile', width: 375, height: 812 },
-];
-
-const VisualMatchPanel = () => {
-  const [form, setForm] = useState({ url: '', username: '', password: '', file: null, viewport: VIEWPORTS[0] });
-  const [result, setResult] = useState(null);
+export default function VisualMatchPanel() {
+  const [url, setUrl] = useState('');
+  const [viewport, setViewport] = useState({ width: 1920, height: 1080 });
+  const [ignoreSelectors, setIgnoreSelectors] = useState(['.cookie-banner', '.chat-widget']);
+  const [newSelector, setNewSelector] = useState('');
   const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
 
-  const runComparison = async () => {
-    if (!form.file || !form.url) return alert("Please provide URL and design file.");
+  const viewports = [
+    { name: 'Desktop', width: 1920, height: 1080 },
+    { name: 'Laptop', width: 1366, height: 768 },
+    { name: 'Tablet', width: 768, height: 1024 },
+    { name: 'Mobile', width: 375, height: 812 },
+  ];
 
+  const handleAddSelector = () => {
+    if (newSelector && !ignoreSelectors.includes(newSelector)) {
+      setIgnoreSelectors([...ignoreSelectors, newSelector]);
+      setNewSelector('');
+    }
+  };
+
+  const runVisualTest = async () => {
     setLoading(true);
-
-
-    setResult(null);
-
-    const fd = new FormData();
-    fd.append('design', form.file);
-    fd.append('url', form.url);
-    fd.append('username', form.username);
-    fd.append('password', form.password);
-    fd.append('width', form.viewport.width);
-    fd.append('height', form.viewport.height);
-
+    setResult(null); // Clear previous result
     try {
-      const { data } = await axios.post(`${import.meta.env.VITE_API_URL}/api/visual/compare`, fd);
-      setResult({ ...data, diffUrl: `${import.meta.env.VITE_API_URL}${data.diffUrl}` });
+      // Use the consolidated api object here
+      const data = await api.runVisualTest({ url, viewport, ignoreSelectors });
+      setResult(data);
     } catch (err) {
-      alert("Comparison failed: " + (err.response?.data?.error || err.message));
+      console.error("Visual Test Failed:", err);
+      alert("Visual test failed: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-panel border border-panelborder rounded text-mist">
-      <h2 className="text-xl font-mono uppercase tracking-widest mb-6">Compare Design vs Live</h2>
+    <div className="p-6 bg-gray-900 text-white rounded-lg">
+      <h2 className="text-xl font-bold mb-4">VISUAL REGRESSION TEST</h2>
 
-      {/* Input Section */}
-      <div className="grid gap-4 mb-6">
-        <input onChange={e => setForm({...form, url: e.target.value})} placeholder="https://example.com" className="w-full p-3 bg-ink border border-panelborder rounded text-sm" />
-        
-        <div className="flex gap-4">
-          <input type="file" onChange={e => setForm({...form, file: e.target.files[0]})} className="text-sm text-steel file:bg-panelborder file:border-0 file:px-4 file:py-2 file:rounded" />
-          <div className="flex bg-ink rounded border border-panelborder p-1">
-            {VIEWPORTS.map(vp => (
-              <button key={vp.label} onClick={() => setForm({...form, viewport: vp})} className={`px-3 py-1 text-xs rounded ${form.viewport.label === vp.label ? 'bg-blue-600' : ''}`}>
-                {vp.label}
-              </button>
-            ))}
-          </div>
+      <input 
+        className="w-full p-2 mb-4 bg-gray-800 border border-gray-700 rounded"
+        placeholder="https://digimantra.com/..."
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+      />
+
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {viewports.map((v) => (
+          <button 
+            key={v.name}
+            className={`p-2 border ${viewport.width === v.width ? 'border-blue-500 bg-blue-900' : 'border-gray-700'}`}
+            onClick={() => setViewport({ width: v.width, height: v.height })}
+          >
+            {v.name} ({v.width}×{v.height})
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm mb-2">Ignore Selectors</label>
+        <div className="flex flex-wrap gap-2 mb-2">
+          {ignoreSelectors.map(sel => (
+            <span key={sel} className="bg-red-900 px-2 py-1 rounded text-xs flex items-center">
+              {sel} <button className="ml-2" onClick={() => setIgnoreSelectors(ignoreSelectors.filter(s => s !== sel))}>×</button>
+            </span>
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <input 
+            className="flex-1 p-2 bg-gray-800 border border-gray-700 rounded text-sm"
+            value={newSelector}
+            onChange={(e) => setNewSelector(e.target.value)}
+            placeholder=".header-clock"
+          />
+          <button onClick={handleAddSelector} className="bg-green-700 px-3 rounded">+</button>
         </div>
       </div>
 
-      <button onClick={runComparison} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded font-mono text-xs uppercase tracking-widest">
-        {loading ? "Analyzing Pixel Fidelity..." : "Run Comparison"}
+      <button 
+        onClick={runVisualTest} 
+        disabled={loading}
+        className="w-full bg-blue-600 py-3 rounded font-bold hover:bg-blue-500 disabled:bg-gray-600"
+      >
+        {loading ? 'RUNNING...' : 'RUN VISUAL TEST'}
       </button>
 
-      {/* Result Stats Section */}
-      {/* Result Stats Section */}
-
-{result && result.matchScore !== undefined ? (
-  <div className="mt-8 border-t border-panelborder pt-6">
-    <div className="flex justify-between items-center mb-6">
-      <div>
-        <div className="text-5xl font-bold text-signal-pass">{result.matchScore}%</div>
-        <div className="text-steel text-xs uppercase">Match Score</div>
-      </div>
-      <div className="text-right">
-        {/* Safe rendering with ternary check */}
-        <div className="text-xl text-mist">
-          {result.diffPixels ? result.diffPixels.toLocaleString() : '0'}
+      {result && (
+        <div className="mt-6 border-t border-gray-700 pt-4">
+          <h3 className="text-lg">Score: {result.score}%</h3>
+          <p className={`font-bold ${parseFloat(result.score) > 95 ? 'text-green-500' : 'text-red-500'}`}>
+            {parseFloat(result.score) > 95 ? 'PASS' : 'FAIL'}
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            <img src={result.baselinePath} alt="Baseline" />
+            <img src={result.livePath} alt="Live" />
+            <img src={result.diffPath} alt="Difference" />
+          </div>
         </div>
-        <div className="text-steel text-xs uppercase">Diff Pixels</div>
-      </div>
-    </div>
-    
-    <div className="bg-ink p-2 rounded">
-      <img src={result.diffUrl} className="w-full border border-panelborder" alt="Diff" />
-    </div>
-  </div>
-) : loading ? <p className="text-steel mt-4">Processing...</p> : null}
+      )}
     </div>
   );
-};
-
-export default VisualMatchPanel;
+}

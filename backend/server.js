@@ -20,7 +20,7 @@ import {
 } from "./engines/contentMatchEngine.js";
 import mammoth from "mammoth";
 
-import { runVisualComparison } from "./engines/visualMatchEngine.js";
+import { runVisualTest } from "./engines/visualMatchEngine.js";
 const DIFF_DIR = path.join(process.cwd(), 'data', 'diffs');
 
 // Create the folder if it doesn't exist
@@ -56,7 +56,7 @@ const docxUpload = multer({
     }
   },
 });
-
+                           
 const imageUpload = multer({
   storage: multer.memoryStorage(),
   fileFilter(req, file, cb) {
@@ -70,6 +70,7 @@ const imageUpload = multer({
 
 // Custom error wrapper to safely handle validation messages
 class MulterError extends Error {
+
   constructor(code, message) {
     super(message);
     this.code = code;
@@ -231,26 +232,13 @@ app.get("/api/tests/compare", (req, res) => {
   res.json(compareRuns(run1, run2));
 });
 // Update this route specifically
-app.post("/api/visual/compare", imageUpload.single("design"), async (req, res) => {
+app.post('/api/visual-test', async (req, res) => {
+  const { url, baselinePath, ignoreSelectors } = req.body;
   try {
-    const { url, username, password, width, height } = req.body; // Add width/height
-    
-    if (!req.file) return res.status(400).json({ error: "No image file uploaded." });
-    if (!url) return res.status(400).json({ error: "URL is required." });
-
-    const runId = nanoid();
-    // Parse viewport dimensions safely
-    const viewport = { 
-      width: parseInt(width) || 1920, 
-      height: parseInt(height) || 1080 
-    };
-    
-    // Pass viewport to your engine
-    const result = await runVisualComparison(url, { username, password }, runId, req.file.buffer, viewport);
-    res.json(result);
-  } catch (err) {
-    console.error("CRITICAL BACKEND ERROR:", err);
-    res.status(500).json({ error: err.message });
+    const result = await runVisualTest(url, baselinePath, ignoreSelectors);
+    res.json({ status: 'SUCCESS', ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
