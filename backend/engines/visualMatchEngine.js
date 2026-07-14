@@ -9,6 +9,7 @@ export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
     throw new Error("Baseline path is undefined. Ensure the design file is selected.");
   }
 
+  // Ensure path is resolved relative to the project root
   const fullBaselinePath = path.resolve(process.cwd(), baselinePath);
 
   try {
@@ -16,19 +17,22 @@ export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
     const baselineBuffer = await fs.readFile(fullBaselinePath);
     const { width, height } = await sharp(baselineBuffer).metadata();
 
-    // 2. Setup Playwright with increased timeout
-    const browser = await chromium.launch();
+    // 2. Setup Playwright
+    const browser = await chromium.launch({
+      args: ['--force-ipv4', '--disable-gpu', '--no-sandbox']
+    });
+    
     const context = await browser.newContext({ viewport: { width, height } });
     const page = await context.newPage();
     
-    // Use 'domcontentloaded' to avoid long-running network requests causing timeouts
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    // Navigate with timeout and domcontentloaded
+    console.log("DEBUG: Navigating to:", url.trim());
+    await page.goto(url.trim(), { waitUntil: "domcontentloaded", timeout: 60000 });
 
     // 3. Hide Dynamic Regions
-    // Wait for the elements to be present before hiding them
     for (const selector of ignoreSelectors) {
       try {
-        await page.waitForSelector(selector, { timeout: 5000 });
+        await page.waitForSelector(selector, { timeout: 3000 });
         await page.evaluate((sel) => {
           document.querySelectorAll(sel).forEach(el => el.style.visibility = "hidden");
         }, selector);
@@ -37,12 +41,15 @@ export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
       }
     }
 
-    // 4. Manual Wait for animations/rendering stability
+    // 4. Manual Wait for stability
     await page.waitForTimeout(2000); 
 
     // 5. Capture Screenshot
     const timestamp = Date.now();
-    const livePath = path.join('data', 'screenshots', `live-${timestamp}.png`);
+    const liveDir = path.join(process.cwd(), 'data', 'screenshots');
+    await fs.mkdir(liveDir, { recursive: true }); // Ensure directory exists
+    
+    const livePath = path.join(liveDir, `live-${timestamp}.png`);
     await page.screenshot({ path: livePath, fullPage: false });
     await browser.close();
 
@@ -59,7 +66,10 @@ export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
       .toBuffer();
 
     // 7. Comparison
-    const diffPath = path.join('data', 'diffs', `diff-${timestamp}.png`);
+    const diffDir = path.join(process.cwd(), 'data', 'diffs');
+    await fs.mkdir(diffDir, { recursive: true });
+    
+    const diffPath = path.join(diffDir, `diff-${timestamp}.png`);
     const diff = Buffer.alloc(width * height * 4);
     const diffPixels = pixelmatch(designRaw, liveBuffer, diff, width, height, { 
       threshold: 0.15, 
@@ -76,8 +86,8 @@ export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
       score,
       status: parseFloat(score) >= 95 ? "PASS" : "FAIL",
       baselinePath,
-      livePath,
-      diffPath,
+      livePath: path.relative(process.cwd(), livePath),
+      diffPath: path.relative(process.cwd(), diffPath),
       stats: {
         matchedPixels: totalPixels - diffPixels,
         diffPixels: diffPixels,

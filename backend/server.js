@@ -216,7 +216,7 @@ app.post(
     executeRun(runId, normalizedUrl, suiteIds, auth);
   },
 );
-
+const baselineUpload = multer({ dest: 'temp/' });
 // --- Regression comparison ----------------------------------------------------
 
 app.get("/api/tests/compare", (req, res) => {
@@ -241,7 +241,21 @@ app.post('/api/visual-test', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+app.post('/api/upload-baseline', baselineUpload.single('image'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file." });
 
+  // Sanitize filename: remove spaces and special characters
+  const sanitizedName = req.file.originalname.replace(/[^a-zA-Z0-9.]/g, "_");
+  const targetDir = path.join(process.cwd(), 'data', 'baselines');
+  const targetPath = path.join(targetDir, sanitizedName);
+
+  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+  
+  fs.renameSync(req.file.path, targetPath);
+  
+  // Return the path relative to the root so your engine can find it
+  res.json({ success: true, path: `data/baselines/${sanitizedName}` });
+});
 app.use('/diffs', express.static(path.join(process.cwd(), 'data', 'diffs')));
 
 // --- Run status / results -----------------------------------------------------
