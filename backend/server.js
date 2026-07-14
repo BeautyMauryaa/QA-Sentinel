@@ -37,7 +37,7 @@ const PORT = process.env.PORT || 4000;
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",
+      "http://localhost:5174",
       "https://qa-sentinel-frontend-atripo7qu-novas-projects-8121d3d6.vercel.app",
     ],
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
