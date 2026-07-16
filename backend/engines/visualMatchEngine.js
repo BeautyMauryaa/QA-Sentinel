@@ -93,6 +93,11 @@ import { freezeDynamicElements } from "./freezeDynamic.js";
 import { maskRegions } from "./regionMasker.js";
 import { captureScreenshot } from "./screenshot.js";
 import { compareImages } from "./comparator.js";
+import { detectClusters } from "../smartDifference/clusterDetector.js";
+import { mergeBoundingBoxes } from "../smartDifference/boundingBoxMerger.js";
+import { generateCrops } from "../smartDifference/cropGenerator.js";
+import { identifySections } from "../smartDifference/sectionIdentifier.js";
+import { generateIssues } from "../smartDifference/issueGenerator.js";
 import { analyzeDifferences } from "./differenceAnalyzer.js";
 import { generateReport } from "./reportGenerator.js";
 
@@ -212,10 +217,68 @@ export async function runVisualTest(
     // 10. Compare Images
     // =====================================================
 
-    const comparison = await compareImages(
-      baselinePath,
-      livePath
-    );
+    // =====================================================
+// 10. Compare Images
+// =====================================================
+
+const comparison = await compareImages(
+  baselinePath,
+  livePath
+);
+
+// ----------------------------
+// Detect changed regions
+// ----------------------------
+
+const clusterResult = await detectClusters(
+  comparison.diffPath
+);
+
+// ----------------------------
+// Merge nearby regions
+// ----------------------------
+
+const mergedBoxes = mergeBoundingBoxes(
+  clusterResult.clusters
+);
+
+// ----------------------------
+// Generate crops
+// ----------------------------
+
+const crops = await generateCrops({
+  baselinePath: path.resolve(process.cwd(), baselinePath),
+  livePath,
+  diffPath: path.resolve(process.cwd(), comparison.diffPath),
+  boxes: mergedBoxes,
+});
+
+// ----------------------------
+// Match regions to DOM sections
+// ----------------------------
+
+const boxesWithSections = await identifySections(
+  page,
+  mergedBoxes
+);
+
+// ----------------------------
+// Combine crops with regions
+// ----------------------------
+
+const smartRegions = boxesWithSections.map((box, index) => ({
+  ...box,
+  ...(crops[index] || {}),
+}));
+
+// ----------------------------
+// Generate Smart Issues
+// ----------------------------
+
+const issueReport = generateIssues({
+  regions: smartRegions,
+  comparison,
+});
 
     // =====================================================
     // 11. Analyze Differences
@@ -231,32 +294,32 @@ export async function runVisualTest(
     // =====================================================
     // 12. Generate Report
     // =====================================================
+const report = generateReport({
+  url,
 
-    const report = generateReport({
-      url,
+  baselinePath: path.resolve(process.cwd(), baselinePath),
 
-      baselinePath: path.resolve(process.cwd(), baselinePath),
+  livePath,
 
-      livePath,
+  diffPath: path.resolve(
+    process.cwd(),
+    comparison.diffPath
+  ),
 
-      diffPath: path.resolve(
-        process.cwd(),
-        comparison.diffPath
-      ),
+  comparison,
 
-      comparison,
+  analysis,
 
-      analysis,
+  issueReport,
 
-      ignoredRegions: ignoreSelectors,
+  ignoredRegions: ignoreSelectors,
 
-      maskedRegions,
+  maskedRegions,
 
-      detectedComponents,
+  detectedComponents,
 
-      executionTime: Date.now() - startTime,
-    });
-
+  executionTime: Date.now() - startTime,
+});
     console.log("\n========================================");
     console.log("Visual Test Completed");
     console.log("Score :", report.summary.score);
