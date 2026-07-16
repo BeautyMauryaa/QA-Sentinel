@@ -29,6 +29,22 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  uploadBaseline: async (file) => {
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const res = await fetch(`${BASE}/upload-baseline`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed: ${res.status}`);
+    }
+    return res.json(); // { success: true, path: 'data/baselines/xxx.png' }
+  },
+
   runTests: async (url, suites, username, password, documentFile) => {
     const formData = new FormData();
     formData.append("url", url);

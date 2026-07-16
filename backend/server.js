@@ -38,6 +38,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5174",
+       "http://localhost:5173",
       "https://qa-sentinel-frontend-atripo7qu-novas-projects-8121d3d6.vercel.app",
     ],
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
@@ -231,32 +232,52 @@ app.get("/api/tests/compare", (req, res) => {
   }
   res.json(compareRuns(run1, run2));
 });
+
+
 // Update this route specifically
 app.post('/api/visual-test', async (req, res) => {
   const { url, baselinePath, ignoreSelectors } = req.body;
   try {
+    console.log("Visual Test Body:", req.body);
+console.log("Baseline Path:", baselinePath);
     const result = await runVisualTest(url, baselinePath, ignoreSelectors);
     res.json({ status: 'SUCCESS', ...result });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
-app.post('/api/upload-baseline', baselineUpload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file." });
 
-  // Sanitize filename: remove spaces and special characters
+
+app.post('/api/upload-baseline', baselineUpload.single('image'), (req, res) => {
+  console.log("Request received");
+
+  if (!req.file) {
+    console.log("No file received");
+    return res.status(400).json({ error: "No file." });
+  }
+
+  console.log("Original filename:", req.file.originalname);
+
   const sanitizedName = req.file.originalname.replace(/[^a-zA-Z0-9.]/g, "_");
-  const targetDir = path.join(process.cwd(), 'data', 'baselines');
+
+  const targetDir = path.join(process.cwd(), "data", "baselines");
   const targetPath = path.join(targetDir, sanitizedName);
 
-  if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-  
+  console.log("Saving to:", targetPath);
+
+  if (!fs.existsSync(targetDir))
+    fs.mkdirSync(targetDir, { recursive: true });
+
   fs.renameSync(req.file.path, targetPath);
-  
-  // Return the path relative to the root so your engine can find it
-  res.json({ success: true, path: `data/baselines/${sanitizedName}` });
+
+  console.log("Saved successfully");
+
+  res.json({
+    success: true,
+    path: `data/baselines/${sanitizedName}`,
+  });
 });
-app.use('/diffs', express.static(path.join(process.cwd(), 'data', 'diffs')));
+app.use('/data', express.static(path.join(process.cwd(), 'data')));
 
 // --- Run status / results -----------------------------------------------------
 
