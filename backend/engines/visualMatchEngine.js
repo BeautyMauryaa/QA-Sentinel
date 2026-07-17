@@ -3,12 +3,7 @@ import { analysisStage } from "./pipeline/analysisStage.js";
 import { comparisonStage } from "./pipeline/comparisonStage.js";
 import { reportingStage } from "./pipeline/reportingStage.js";
 
-export async function runVisualTest(
-  url,
-  baselinePath,
-  ignoreSelectors = []
-) {
-
+export async function runVisualTest(url, baselinePath, ignoreSelectors = []) {
   if (!url) {
     throw new Error("URL is required.");
   }
@@ -18,11 +13,9 @@ export async function runVisualTest(
   }
 
   let browser;
-
   const startTime = Date.now();
 
   try {
-
     // ============================================
     // Preparation Stage
     // ============================================
@@ -30,26 +23,27 @@ export async function runVisualTest(
     const preparation = await preparationStage({
       url,
       baselinePath,
-      ignoreSelectors
+      ignoreSelectors,
     });
 
     browser = preparation.browser;
-
     const { page } = preparation;
 
     // ============================================
     // Analysis Stage
     // ============================================
 
+    const analysis = await analysisStage({
+      page,
+      ignoreSelectors,
+    });
+
     const {
       domAnalysis,
       components,
       strategy,
-      maskedRegions
-    } = await analysisStage({
-      page,
-      ignoreSelectors
-    });
+      maskedRegions,
+    } = analysis;
 
     // ============================================
     // Comparison Stage
@@ -59,10 +53,11 @@ export async function runVisualTest(
       livePath,
       comparison,
       smartRegions,
-      issueReport
+      issueReport,
     } = await comparisonStage({
       page,
-      baselinePath
+      baselinePath,
+      analysis,
     });
 
     // ============================================
@@ -70,47 +65,27 @@ export async function runVisualTest(
     // ============================================
 
     const report = reportingStage({
-
       url,
-
       baselinePath,
-
       comparison,
-
       livePath,
-
       issueReport,
-
       domAnalysis,
-
       strategy,
-
       ignoreSelectors,
-
       maskedRegions,
-
-      executionTime:
-        Date.now() - startTime
-
+      executionTime: Date.now() - startTime,
     });
 
     return report;
-
   } catch (err) {
-
     console.error("\nVisual Engine Error");
     console.error(err);
 
-    throw new Error(
-      `Visual Comparison Failed: ${err.message}`
-    );
-
+    throw new Error(`Visual Comparison Failed: ${err.message}`);
   } finally {
-
     if (browser) {
       await browser.close();
     }
-
   }
-
 }

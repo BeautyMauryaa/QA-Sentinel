@@ -10,7 +10,55 @@ import path from "path";
  * @param {string} livePath Absolute live screenshot path
  * @returns {Object}
  */
-export async function compareImages(baselinePath, livePath) {
+function paintIgnoredRegions(
+  buffer,
+  width,
+  height,
+  ignoredRegions
+) {
+  for (const region of ignoredRegions) {
+
+    if (
+      region.x == null ||
+      region.y == null ||
+      region.width == null ||
+      region.height == null
+    ) {
+      continue;
+    }
+
+    const startX = Math.max(0, Math.floor(region.x));
+    const startY = Math.max(0, Math.floor(region.y));
+
+    const endX = Math.min(
+      width,
+      Math.ceil(region.x + region.width)
+    );
+
+    const endY = Math.min(
+      height,
+      Math.ceil(region.y + region.height)
+    );
+
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+
+        const index = (y * width + x) * 4;
+
+        buffer[index] = 128;
+        buffer[index + 1] = 128;
+        buffer[index + 2] = 128;
+        buffer[index + 3] = 255;
+      }
+    }
+  }
+}
+
+export async function compareImages({
+  baselinePath,
+  livePath,
+  ignoredRegions = []
+}) {
   const fullBaselinePath = path.resolve(process.cwd(), baselinePath);
 
   // Ensure files exist
@@ -47,6 +95,22 @@ export async function compareImages(baselinePath, livePath) {
     .toBuffer();
 
   // Pixelmatch
+  console.log("\nIgnoring Regions:");
+console.table(ignoredRegions);
+paintIgnoredRegions(
+  baselineBuffer,
+  width,
+  height,
+  ignoredRegions
+);
+
+paintIgnoredRegions(
+  liveBuffer,
+  width,
+  height,
+  ignoredRegions
+);
+
   const diffBuffer = Buffer.alloc(width * height * 4);
 
   const diffPixels = pixelmatch(

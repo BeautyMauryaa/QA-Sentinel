@@ -44,14 +44,27 @@ export async function analysisStage({
   }
 
   // ============================================
-  // 5. Mask Dynamic Regions
-  // ============================================
+// 5. Mask Dynamic Regions
+// ============================================
 
-  const maskedRegions = await maskRegions(
-    page,
-    ignoreSelectors,
-    strategy.mask
-  );
+const selectorsToMask = [
+  ...new Set([
+    ...ignoreSelectors,
+    ...strategy.mask.map(item => item.selector),
+  ]),
+];
+
+console.log("\nSelectors to Mask:");
+console.table(selectorsToMask);
+
+const maskedRegions = await maskRegions(
+  page,
+  selectorsToMask
+);
+
+console.log(
+  `Total Masked Regions: ${maskedRegions.length}`
+);
 
   console.log("\n========== Analysis Completed ==========\n");
 
