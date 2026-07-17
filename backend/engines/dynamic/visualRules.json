@@ -1,0 +1,51 @@
+{
+  "ignoreSelectors": [
+    ".cookie-banner",
+    ".chat-widget",
+    ".grecaptcha-badge"
+  ],
+
+  "freezeSelectors": [
+    "video",
+    "iframe",
+    "canvas"
+  ],
+
+  "dynamicClasses": [
+    "swiper",
+    "swiper-wrapper",
+    "swiper-slide",
+
+    "slick-slider",
+    "slick-track",
+
+    "owl-carousel",
+
+    "splide",
+
+    "carousel",
+
+    "slider",
+
+    "marquee",
+
+    "gsap",
+
+    "lottie",
+
+    "framer-motion"
+  ],
+
+  "layoutOnly": [
+    ".pricing",
+    ".services",
+    ".cards",
+    ".features"
+  ],
+
+  "ignoreHorizontalScroll": true,
+
+  "ignoreOverflow": true,
+
+  "detectSticky": true
+}
