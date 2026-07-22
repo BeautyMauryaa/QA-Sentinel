@@ -110,6 +110,13 @@ paintIgnoredRegions(
   height,
   ignoredRegions
 );
+await sharp(baselineBuffer, {
+  raw: { width, height, channels: 4 },
+}).png().toFile("debug-masked-baseline.png");
+
+await sharp(liveBuffer, {
+  raw: { width, height, channels: 4 },
+}).png().toFile("debug-masked-live.png");
 
   const diffBuffer = Buffer.alloc(width * height * 4);
 

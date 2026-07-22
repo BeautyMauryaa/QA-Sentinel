@@ -56,9 +56,16 @@ export async function comparisonStage({
   // 4. Merge Nearby Boxes
   // ============================================
 
-  const mergedBoxes = mergeBoundingBoxes(
-    clusterResult.clusters
-  );
+ console.log("\n========== Cluster Result ==========");
+console.log(`Clusters: ${clusterResult.totalClusters}`);
+
+const mergedBoxes = mergeBoundingBoxes(
+  clusterResult.clusters
+);
+
+console.log("\n========== Merged Boxes ==========");
+console.log(`Merged Boxes: ${mergedBoxes.length}`);
+console.table(mergedBoxes.slice(0, 10)); // only first 10
 
   // ============================================
   // 5. Generate Crops

@@ -2,17 +2,6 @@ import sharp from "sharp";
 import fs from "fs/promises";
 import path from "path";
 
-/**
- * Generate cropped images for every detected issue.
- *
- * Output:
- * data/crops/
- *    issue-1/
- *       baseline.png
- *       live.png
- *       diff.png
- */
-
 export async function generateCrops({
   baselinePath,
   livePath,
@@ -23,11 +12,7 @@ export async function generateCrops({
     return [];
   }
 
-  const cropRoot = path.join(
-    process.cwd(),
-    "data",
-    "crops"
-  );
+  const cropRoot = path.join(process.cwd(), "data", "crops");
 
   await fs.mkdir(cropRoot, {
     recursive: true,
@@ -47,14 +32,15 @@ export async function generateCrops({
   //-------------------------------------
   // Generate crops
   //-------------------------------------
-
+console.log({
+  imageWidth,
+  imageHeight,
+  totalBoxes: boxes.length,
+});
   for (let i = 0; i < boxes.length; i++) {
     const box = boxes[i];
 
-    const issueFolder = path.join(
-      cropRoot,
-      `issue-${i + 1}`
-    );
+    const issueFolder = path.join(cropRoot, `issue-${i + 1}`);
 
     await fs.mkdir(issueFolder, {
       recursive: true,
@@ -63,66 +49,91 @@ export async function generateCrops({
     //-----------------------------------
     // Keep crop inside image
     //-----------------------------------
+const left = Math.max(
+  0,
+  Number(box.x) || 0
+);
 
-    const left = Math.max(
-      0,
-      Math.floor(box.x)
-    );
+const top = Math.max(
+  0,
+  Number(box.y) || 0
+);
 
-    const top = Math.max(
-      0,
-      Math.floor(box.y)
-    );
+const rawWidth = Number(box.width);
+const rawHeight = Number(box.height);
 
-    const width = Math.min(
-      Math.floor(box.width),
-      imageWidth - left
-    );
+if (
+  !Number.isFinite(rawWidth) ||
+  !Number.isFinite(rawHeight)
+) {
+  console.warn(
+    "Invalid crop size:",
+    box
+  );
+  continue;
+}
 
-    const height = Math.min(
-      Math.floor(box.height),
-      imageHeight - top
-    );
+const width = Math.min(
+  Math.floor(rawWidth),
+  imageWidth - left
+);
 
-    //-----------------------------------
-    // Skip invalid boxes
-    //-----------------------------------
+const height = Math.min(
+  Math.floor(rawHeight),
+  imageHeight - top
+);
 
-    if (width <= 0 || height <= 0) {
-      continue;
+if (
+  width <= 0 ||
+  height <= 0 ||
+  left >= imageWidth ||
+  top >= imageHeight
+) {
+  console.warn(
+    "Skipping invalid crop:",
+    {
+      left,
+      top,
+      width,
+      height,
+      imageWidth,
+      imageHeight,
     }
+  );
+  continue;
+}
 
     //-----------------------------------
     // Output paths
     //-----------------------------------
 
-    const baselineCrop = path.join(
-      issueFolder,
-      "baseline.png"
-    );
+    const baselineCrop = path.join(issueFolder, "baseline.png");
 
-    const liveCrop = path.join(
-      issueFolder,
-      "live.png"
-    );
+    const liveCrop = path.join(issueFolder, "live.png");
 
-    const diffCrop = path.join(
-      issueFolder,
-      "diff.png"
-    );
+    const diffCrop = path.join(issueFolder, "diff.png");
 
     //-----------------------------------
     // Extract baseline
     //-----------------------------------
-
-    await sharp(baselinePath)
-      .extract({
-        left,
-        top,
-        width,
-        height,
-      })
-      .toFile(baselineCrop);
+try {
+  await sharp(baselinePath)
+    .extract({
+      left,
+      top,
+      width,
+      height,
+    })
+    .toFile(baselineCrop);
+} catch (err) {
+  console.error("Baseline crop failed:", {
+    left,
+    top,
+    width,
+    height,
+  });
+  throw err;
+}
 
     //-----------------------------------
     // Extract live
@@ -164,20 +175,11 @@ export async function generateCrops({
         height,
       },
 
-      baseline: path.relative(
-        process.cwd(),
-        baselineCrop
-      ),
+      baseline: path.relative(process.cwd(), baselineCrop),
 
-      live: path.relative(
-        process.cwd(),
-        liveCrop
-      ),
+      live: path.relative(process.cwd(), liveCrop),
 
-      diff: path.relative(
-        process.cwd(),
-        diffCrop
-      ),
+      diff: path.relative(process.cwd(), diffCrop),
     });
   }
 

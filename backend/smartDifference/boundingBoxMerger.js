@@ -4,15 +4,8 @@
  * meaningful UI issues (cards, sections, buttons, etc.).
  */
 
-export function mergeBoundingBoxes(
-  clusters,
-  options = {}
-) {
-  const {
-    horizontalGap = 40,
-    verticalGap = 40,
-    padding = 20,
-  } = options;
+export function mergeBoundingBoxes(clusters, options = {}) {
+  const { horizontalGap = 40, verticalGap = 40, padding = 20 } = options;
 
   if (!clusters || clusters.length === 0) {
     return [];
@@ -35,15 +28,9 @@ export function mergeBoundingBoxes(
     const x = Math.min(a.x, b.x);
     const y = Math.min(a.y, b.y);
 
-    const right = Math.max(
-      a.x + a.width,
-      b.x + b.width
-    );
+    const right = Math.max(a.x + a.width, b.x + b.width);
 
-    const bottom = Math.max(
-      a.y + a.height,
-      b.y + b.height
-    );
+    const bottom = Math.max(a.y + a.height, b.y + b.height);
 
     return {
       x,
@@ -86,7 +73,7 @@ export function mergeBoundingBoxes(
   // Apply Padding
   //-----------------------------------------
 
-  const padded = merged.map(box => ({
+  const padded = merged.map((box) => ({
     x: Math.max(0, box.x - padding),
     y: Math.max(0, box.y - padding),
     width: box.width + padding * 2,

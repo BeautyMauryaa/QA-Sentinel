@@ -8,18 +8,13 @@ import sharp from "sharp";
  * @returns {Promise<Array>}
  */
 
-export async function detectClusters(
-  diffPath,
-  options = {}
-) {
+export async function detectClusters(diffPath, options = {}) {
   const {
-
     // Pixel intensity needed to consider it "changed"
     threshold = 120,
 
     // Ignore tiny noisy regions
     minClusterSize = 40,
-
   } = options;
 
   //----------------------------------------
@@ -50,7 +45,6 @@ export async function detectClusters(
   ];
 
   const isChangedPixel = (x, y) => {
-
     const i = (y * width + x) * 4;
 
     const r = data[i];
@@ -59,11 +53,7 @@ export async function detectClusters(
 
     // Pixelmatch paints changed pixels bright red
 
-    return (
-      r > threshold &&
-      g < 80 &&
-      b < 80
-    );
+    return r > threshold && g < 80 && b < 80;
   };
 
   //----------------------------------------
@@ -73,9 +63,7 @@ export async function detectClusters(
   const clusters = [];
 
   for (let y = 0; y < height; y++) {
-
     for (let x = 0; x < width; x++) {
-
       const id = index(x, y);
 
       if (visited[id]) continue;
@@ -98,7 +86,6 @@ export async function detectClusters(
       let maxY = y;
 
       while (queue.length) {
-
         const [cx, cy] = queue.shift();
 
         count++;
@@ -110,16 +97,10 @@ export async function detectClusters(
         maxY = Math.max(maxY, cy);
 
         for (const [dx, dy] of directions) {
-
           const nx = cx + dx;
           const ny = cy + dy;
 
-          if (
-            nx < 0 ||
-            ny < 0 ||
-            nx >= width ||
-            ny >= height
-          ) {
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
             continue;
           }
 
@@ -144,7 +125,6 @@ export async function detectClusters(
       }
 
       clusters.push({
-
         x: minX,
 
         y: minY,
@@ -153,12 +133,9 @@ export async function detectClusters(
 
         height: maxY - minY + 1,
 
-        area:
-          (maxX - minX + 1) *
-          (maxY - minY + 1),
+        area: (maxX - minX + 1) * (maxY - minY + 1),
 
         pixels: count,
-
       });
     }
   }
@@ -170,7 +147,6 @@ export async function detectClusters(
   clusters.sort((a, b) => b.area - a.area);
 
   return {
-
     width,
 
     height,
@@ -178,6 +154,5 @@ export async function detectClusters(
     totalClusters: clusters.length,
 
     clusters,
-
   };
 }
